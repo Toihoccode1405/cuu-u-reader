@@ -4,8 +4,5 @@ compatibility_date = "2024-04-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "reader_db"
-database_id = "local-d1"
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "reader-books"
+database_name = "reder_db"
+database_id = "377e84e6-7de8-4f0f-965f-602848fe17b4"

@@ -48,7 +48,6 @@ async function hashPassword(password, salt) {
     .join('');
 }
 
-// Simple signed token: base64(userId:timestamp:signature)
 const JWT_SECRET = 'cuu_u_reader_secret_key_2026';
 
 async function generateToken(userId, username) {
@@ -96,7 +95,7 @@ async function verifyToken(token) {
 }
 
 // -----------------------------------------------------------------------------
-// ROUTER & HANDLERS
+// MAIN WORKER HANDLER
 // -----------------------------------------------------------------------------
 
 export default {
@@ -108,10 +107,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Auto migrate database table if needed
-    if (env.DB) {
-      await initTables(env.DB);
+    if (!env.DB) {
+      return errorResponse('Chưa liên kết cơ sở dữ liệu Cloudflare D1', 500);
     }
+
+    await initTables(env.DB);
 
     // 1. Auth: Register
     if (path === '/api/auth/register' && request.method === 'POST') {
@@ -197,29 +197,20 @@ export default {
       const fileBuffer = await file.arrayBuffer();
       const bookId = 'b_' + crypto.randomUUID();
 
-      // Store EPUB in Cloudflare R2
-      const epubKey = `epubs/${userId}/${bookId}.epub`;
-      await env.BUCKET.put(epubKey, fileBuffer, {
-        httpMetadata: { contentType: 'application/epub+zip' }
-      });
-
-      // Parse metadata from zip
       const zip = await JSZip.loadAsync(fileBuffer);
-      const metadata = await parseEpubMetadata(zip, file.name);
+      const metadata = await parseEpubFull(zip, file.name);
 
       let hasCover = 0;
-      let coverUrl = null;
-      if (metadata.coverData) {
-        const coverKey = `covers/${userId}/${bookId}.jpg`;
-        await env.BUCKET.put(coverKey, metadata.coverData, {
-          httpMetadata: { contentType: 'image/jpeg' }
-        });
+      if (metadata.coverBase64) {
+        await env.DB.prepare('INSERT OR REPLACE INTO covers (book_id, cover_data) VALUES (?, ?)')
+          .bind(bookId, metadata.coverBase64)
+          .run();
         hasCover = 1;
-        coverUrl = `/api/books/${bookId}/cover`;
       }
 
+      // Save book record
       await env.DB.prepare(
-        'INSERT INTO books (id, user_id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, cover_url, chapters_json, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO books (id, user_id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, chapters_json, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         bookId,
         userId,
@@ -229,10 +220,23 @@ export default {
         1,
         0,
         hasCover,
-        coverUrl,
-        JSON.stringify(metadata.chapters),
+        JSON.stringify(metadata.chapters.map(c => ({ index: c.index, title: c.title }))),
         Date.now()
       ).run();
+
+      // Save chapters in batches to D1
+      const batchStatements = [];
+      for (const ch of metadata.chapters) {
+        batchStatements.push(
+          env.DB.prepare('INSERT INTO chapters (book_id, chapter_index, title, content) VALUES (?, ?, ?, ?)')
+            .bind(bookId, ch.index, ch.title, ch.content)
+        );
+      }
+
+      // D1 supports batch execution up to 100 statements
+      for (let i = 0; i < batchStatements.length; i += 80) {
+        await env.DB.batch(batchStatements.slice(i, i + 80));
+      }
 
       return jsonResponse({
         id: bookId,
@@ -278,39 +282,26 @@ export default {
       const bookId = matchChapter[1];
       const chapterIdx = parseInt(matchChapter[2]);
 
-      const record = await env.DB.prepare('SELECT * FROM books WHERE id = ? AND user_id = ?')
+      const record = await env.DB.prepare('SELECT total_chapters FROM books WHERE id = ? AND user_id = ?')
         .bind(bookId, userId)
         .first();
 
       if (!record) return errorResponse('Không tìm thấy sách', 404);
 
-      const chapters = JSON.parse(record.chapters_json || '[]');
-      if (chapterIdx < 1 || chapterIdx > chapters.length) {
-        return errorResponse('Chương không tồn tại', 404);
-      }
+      const chapterRow = await env.DB.prepare(
+        'SELECT title, content FROM chapters WHERE book_id = ? AND chapter_index = ?'
+      ).bind(bookId, chapterIdx).first();
 
-      const chMeta = chapters[chapterIdx - 1];
-
-      // Fetch EPUB from R2
-      const epubKey = `epubs/${userId}/${bookId}.epub`;
-      const epubObj = await env.BUCKET.get(epubKey);
-      if (!epubObj) return errorResponse('File sách không tồn tại trên R2', 404);
-
-      const zip = await JSZip.loadAsync(await epubObj.arrayBuffer());
-      const chFile = findZipFile(zip, chMeta.href);
-      if (!chFile) return errorResponse('Không tìm thấy file chương trong EPUB', 404);
-
-      const rawHtml = await chFile.async('text');
-      const cleanHtml = cleanXhtml(rawHtml);
+      if (!chapterRow) return errorResponse('Chương không tồn tại', 404);
 
       return jsonResponse({
         book_id: bookId,
         chapter_index: chapterIdx,
-        title: chMeta.title,
-        content_html: cleanHtml,
-        total_chapters: chapters.length,
+        title: chapterRow.title,
+        content_html: chapterRow.content,
+        total_chapters: record.total_chapters,
         prev_index: chapterIdx > 1 ? chapterIdx - 1 : null,
-        next_index: chapterIdx < chapters.length ? chapterIdx + 1 : null
+        next_index: chapterIdx < record.total_chapters ? chapterIdx + 1 : null
       });
     }
 
@@ -324,7 +315,6 @@ export default {
         'UPDATE books SET current_chapter = ?, scroll_percent = ? WHERE id = ? AND user_id = ?'
       ).bind(chapter_index, scroll_percent, bookId, userId).run();
 
-      // Update global last read session
       await env.DB.prepare(`
         INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -338,7 +328,7 @@ export default {
       return jsonResponse({ success: true });
     }
 
-    // 8. Last Read: Get latest progress
+    // 8. Last Read
     if (path === '/api/last-read' && request.method === 'GET') {
       const last = await env.DB.prepare(
         'SELECT * FROM progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1'
@@ -347,27 +337,37 @@ export default {
       return jsonResponse(last || null);
     }
 
-    // 9. Cover Image Stream from R2
+    // 9. Cover Image Stream from D1
     const matchCover = path.match(/^\/api\/books\/([^\/]+)\/cover$/);
     if (matchCover && request.method === 'GET') {
       const bookId = matchCover[1];
-      const coverKey = `covers/${userId}/${bookId}.jpg`;
-      const obj = await env.BUCKET.get(coverKey);
-      if (!obj) return new Response('Cover not found', { status: 404 });
+      const row = await env.DB.prepare('SELECT cover_data FROM covers WHERE book_id = ?').bind(bookId).first();
+      if (!row || !row.cover_data) return new Response('Cover not found', { status: 404 });
 
-      const headers = new Headers(CORS_HEADERS);
-      headers.set('Content-Type', 'image/jpeg');
-      headers.set('Cache-Control', 'public, max-age=31536000');
-      return new Response(obj.body, { headers });
+      // cover_data is data:image/...;base64,...
+      const match = row.cover_data.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      if (match) {
+        const mime = match[1];
+        const binary = atob(match[2]);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        const headers = new Headers(CORS_HEADERS);
+        headers.set('Content-Type', mime);
+        headers.set('Cache-Control', 'public, max-age=31536000');
+        return new Response(bytes, { headers });
+      }
+
+      return new Response('Invalid cover data', { status: 500 });
     }
 
     // 10. Delete Book
     if (matchDetail && request.method === 'DELETE') {
       const bookId = matchDetail[1];
       await env.DB.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').bind(bookId, userId).run();
+      await env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(bookId).run();
+      await env.DB.prepare('DELETE FROM covers WHERE book_id = ?').bind(bookId).run();
       await env.DB.prepare('DELETE FROM progress WHERE book_id = ? AND user_id = ?').bind(bookId, userId).run();
-      await env.BUCKET.delete(`epubs/${userId}/${bookId}.epub`);
-      await env.BUCKET.delete(`covers/${userId}/${bookId}.jpg`);
       return jsonResponse({ success: true });
     }
 
@@ -376,7 +376,7 @@ export default {
 };
 
 // -----------------------------------------------------------------------------
-// D1 DATABASE INITIALIZATION
+// D1 DATABASE SCHEMA INITIALIZATION
 // -----------------------------------------------------------------------------
 
 async function initTables(db) {
@@ -396,9 +396,19 @@ async function initTables(db) {
       current_chapter INTEGER DEFAULT 1,
       scroll_percent REAL DEFAULT 0,
       has_cover INTEGER DEFAULT 0,
-      cover_url TEXT,
       chapters_json TEXT NOT NULL,
       added_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS covers (
+      book_id TEXT PRIMARY KEY,
+      cover_data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chapters (
+      book_id TEXT NOT NULL,
+      chapter_index INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      PRIMARY KEY (book_id, chapter_index)
     );
     CREATE TABLE IF NOT EXISTS progress (
       user_id TEXT NOT NULL,
@@ -414,7 +424,7 @@ async function initTables(db) {
 }
 
 // -----------------------------------------------------------------------------
-// EPUB PARSER IN WORKER
+// FULL EPUB EXTRACTOR
 // -----------------------------------------------------------------------------
 
 function findZipFile(zip, filename) {
@@ -437,7 +447,7 @@ function getTagText(xml, tagName) {
   return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim() : '';
 }
 
-async function parseEpubMetadata(zip, fallbackName) {
+async function parseEpubFull(zip, fallbackName) {
   const containerFile = findZipFile(zip, 'META-INF/container.xml');
   const containerXml = await containerFile.async('text');
   const m_root = containerXml.match(/full-path=['"]([^'"]+)['"]/i);
@@ -460,8 +470,8 @@ async function parseEpubMetadata(zip, fallbackName) {
     if (idM && hrefM) manifest[idM[1]] = hrefM[1].trim();
   }
 
-  // Cover image extraction
-  let coverData = null;
+  // Cover image
+  let coverBase64 = null;
   let coverHref = null;
   const coverMeta = opfXml.match(/<meta\s+[^>]*name=['"]cover['"][^>]*content=['"]([^'"]+)['"]/i);
   if (coverMeta && manifest[coverMeta[1]]) coverHref = manifest[coverMeta[1]];
@@ -476,7 +486,9 @@ async function parseEpubMetadata(zip, fallbackName) {
   if (coverHref) {
     const coverFile = findZipFile(zip, opfDir ? `${opfDir}/${coverHref}` : coverHref);
     if (coverFile) {
-      coverData = await coverFile.async('arraybuffer');
+      const b64 = await coverFile.async('base64');
+      const ext = coverHref.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+      coverBase64 = `data:image/${ext};base64,${b64}`;
     }
   }
 
@@ -501,10 +513,13 @@ async function parseEpubMetadata(zip, fallbackName) {
         const srcM = npXml.match(/<content\s+[^>]*src=['"]([^'"]+)['"]/i);
         if (srcM) {
           const cleanSrc = srcM[1].split('#')[0].trim();
+          const fullSrc = (opfDir ? `${opfDir}/${cleanSrc}` : cleanSrc).replace(/\\/g, '/');
+          const chFile = findZipFile(zip, fullSrc);
+          const rawContent = chFile ? await chFile.async('text') : '<p>Chương trống.</p>';
           chapters.push({
             index: idx,
             title: chTitle,
-            href: (opfDir ? `${opfDir}/${cleanSrc}` : cleanSrc).replace(/\\/g, '/')
+            content: cleanXhtml(rawContent)
           });
           idx++;
         }
@@ -512,7 +527,7 @@ async function parseEpubMetadata(zip, fallbackName) {
     }
   }
 
-  return { title, author, coverData, chapters };
+  return { title, author, coverBase64, chapters };
 }
 
 function cleanXhtml(raw) {
