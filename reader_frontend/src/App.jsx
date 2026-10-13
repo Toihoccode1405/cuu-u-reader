@@ -5,6 +5,7 @@ import {
   PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy
 } from 'lucide-react';
 import AuthPage from './AuthPage';
+import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
 
 export default function App() {
@@ -80,7 +81,8 @@ export default function App() {
   const touchStartYRef = useRef(0);
   const pendingRestoreRef = useRef(null);
   const focusParaRef = useRef(-1);
-  const doubleTapRef = useRef(null);
+  const tapRef = useRef({ para: -1, time: 0 });
+  const tapTimerRef = useRef(null);
   const shortcutsRef = useRef({});
 
   const showToast = useCallback((msg, ms = 3000) => {
@@ -652,32 +654,35 @@ export default function App() {
   }, [view, currentBook, currentChapter, chapterIndex, getActiveParaIndex]);
 
   // Nhấn 2 lần vào một dòng: ghim sáng dòng đó. Nhấn 1 lần: mở menu thao tác nhanh.
+  // Một cú nhấn đúp của trình duyệt phát ra 2 sự kiện 'click' liên tiếp, nên chỉ
+  // cần đếm click và huỷ bộ đếm của lần nhấn trước -> không bao giờ mở nhầm menu.
   const handleReaderTap = (e) => {
     const target = e.target.closest('.reader-body [data-p]');
     if (!target) return;
     const paraIdx = parseInt(target.getAttribute('data-p'), 10);
     if (!Number.isFinite(paraIdx)) return;
 
-    setSelectedPara(null);
-
     const now = Date.now();
-    const last = doubleTapRef.current;
-    const sameLine = last && last.para === paraIdx;
+    const prev = tapRef.current;
 
-    if (sameLine && now - last.time < 400) {
-      // Double tap -> ghim sáng dòng này
-      doubleTapRef.current = null;
+    if (prev.para === paraIdx && now - prev.time < 450) {
+      // Nhấn lần 2 trên cùng dòng -> ghim sáng, huỷ menu đang chờ
+      clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+      tapRef.current = { para: -1, time: 0 };
+      setSelectedPara(null);
       toggleFocusLine(paraIdx);
-    } else {
-      doubleTapRef.current = { para: paraIdx, time: now };
-      // Single tap -> hiện menu nhanh (cắm cờ / sao chép) sau khi chắc chắn không phải nhấn 2 lần
-      setTimeout(() => {
-        const st = doubleTapRef.current;
-        if (st && st.para === paraIdx && Date.now() - st.time >= 380) {
-          openSelectionMenu(paraIdx);
-        }
-      }, 420);
+      return;
     }
+
+    tapRef.current = { para: paraIdx, time: now };
+    clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => {
+      tapTimerRef.current = null;
+      if (tapRef.current.para === paraIdx) {
+        openSelectionMenu(paraIdx);
+      }
+    }, 450);
   };
 
   const handleTouchStart = (e) => {
@@ -814,12 +819,15 @@ export default function App() {
 
   return (
     <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <XhSprite />
       {view === 'library' && (
         <>
           <header className="header">
             <div className="header-inner">
               <div className="brand" onClick={() => loadUserData(cloudToken)}>
-                <BookOpen size={24} style={{ color: 'var(--accent-color)' }} />
+                <span className="brand-seal">
+                  <XhIcon name="seal" />
+                </span>
                 <span>Cửu U Thư Các</span>
               </div>
 
@@ -873,7 +881,7 @@ export default function App() {
             {history.length > 0 && (
               <section className="history-section">
                 <div className="section-header-title">
-                  <History size={20} color="var(--accent-color)" />
+                  <XhIcon name="talisman" />
                   <span>Tiến Độ & Lịch Sử Đọc Gần Đây ({history.length})</span>
                 </div>
                 <div className="history-grid">
@@ -888,7 +896,7 @@ export default function App() {
                         />
                       ) : (
                         <div className="history-cover-placeholder">
-                          <BookOpen size={28} />
+                          <XhIcon name="scroll" style={{ fontSize: '1.9rem' }} />
                         </div>
                       )}
                       <div className="history-body">
@@ -910,7 +918,7 @@ export default function App() {
                           </div>
                           <div className="history-footer-row">
                             <span className="history-meta-text">
-                              {item.author || 'Tác giả'} • {Math.round(item.scroll_percent || 0)}%
+                              <XhIcon name="knot" /> {item.author || 'Tác giả'} • {Math.round(item.scroll_percent || 0)}%
                             </span>
                             <button
                               className="history-resume-btn"
@@ -929,15 +937,20 @@ export default function App() {
             )}
 
             {/* 2. FULL BOOK LIBRARY GRID */}
+            <div className="xh-divider" aria-hidden="true">
+              <span className="xh-line" />
+              <XhIcon name="lotus" />
+              <span className="xh-line" />
+            </div>
             <section>
               <div className="section-header-title">
-                <BookOpen size={20} color="var(--accent-color)" />
+                <XhIcon name="scroll" />
                 <span>Tất Cả Sách Trong Thư Các ({filteredBooks.length})</span>
               </div>
 
               {filteredBooks.length === 0 ? (
                 <div className="empty-state">
-                  <UploadCloud size={54} className="empty-icon" />
+                  <XhIcon name="pagoda" />
                   <h3>Thư các của bạn hiện đang trống</h3>
                   <p>Hãy thêm file tiểu thuyết <code>.epub</code> để bắt đầu đọc và đồng bộ trên mọi thiết bị.</p>
                   <label className="btn btn-primary" style={{ marginTop: '1.25rem', cursor: 'pointer' }}>
@@ -980,7 +993,7 @@ export default function App() {
                           />
                         ) : (
                           <div className="book-cover-placeholder">
-                            <BookOpen size={42} />
+                            <XhIcon name="pagoda" style={{ fontSize: '3.2rem' }} />
                           </div>
                         )}
                       </div>
@@ -989,7 +1002,7 @@ export default function App() {
                         <h4 className="book-title" title={book.title}>{book.title}</h4>
                         <div className="book-author">{book.author || 'Khuyết danh'}</div>
                         <div className="book-badge">
-                          {book.total_chapters} chương
+                          <XhIcon name="banner" /> {book.total_chapters} chương
                         </div>
                       </div>
                     </div>
@@ -1020,6 +1033,9 @@ export default function App() {
               </button>
 
               <div className="reader-title-truncate">
+                <span className="brand-seal" style={{ width: 24, height: 24, marginRight: 8 }}>
+                  <XhIcon name="sword" />
+                </span>
                 <strong>{currentBook.record ? currentBook.record.title : currentBook.title}</strong>
                 <span className="hide-on-mobile" style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
                 <span className="hide-on-mobile" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
@@ -1031,7 +1047,7 @@ export default function App() {
                   onClick={() => toggleFocusLine()}
                   title="Ghim sáng dòng đang đọc (H)"
                 >
-                  <Highlighter size={18} />
+                  <XhIcon name="moon" />
                 </button>
                 <button
                   className={`btn btn-icon ${isCurrentParaBookmarked ? 'flag-on' : ''}`}
@@ -1045,13 +1061,13 @@ export default function App() {
                   onClick={() => setShowBookmarks(true)}
                   title="Danh sách cờ đã cắm (M)"
                 >
-                  <History size={18} />
+                  <XhIcon name="talisman" />
                 </button>
                 <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương (C)">
-                  <List size={19} />
+                  <XhIcon name="scroll" />
                 </button>
                 <button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Cài đặt giao diện (S)">
-                  <Sliders size={19} />
+                  <XhIcon name="jade" />
                 </button>
                 <button className="btn btn-icon hide-on-mobile" onClick={() => setShowShortcuts(true)} title="Phím tắt (?)">
                   <Keyboard size={19} />
@@ -1064,10 +1080,14 @@ export default function App() {
           </header>
 
           <main className="reader-content-box">
+            <div className="xh-title-row" aria-hidden="true">
+              <span className="xh-rule" />
+              <XhIcon name="sword" />
+              <span className="xh-rule right" />
+            </div>
             <h1 className="chapter-header-title">{currentChapter.title}</h1>
             <div
               className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
-              onDoubleClick={handleReaderTap}
               onClick={handleReaderTap}
               dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
             />
@@ -1096,7 +1116,10 @@ export default function App() {
           </main>
 
           <footer className="reader-footer">
-            <span>{currentChapter.title}</span>
+            <span>
+              <XhIcon name="swordqi" style={{ marginRight: 6 }} />
+              {currentChapter.title}
+            </span>
             <span>{Math.round(scrollProgress)}%</span>
           </footer>
 

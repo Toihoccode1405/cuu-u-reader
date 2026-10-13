@@ -1,0 +1,165 @@
+/*
+ * Bộ icon tiên hiệp (kiếm - đao - quyển - đỉnh - tháp - nguyệt - vân - liên - ấn - hồ lô)
+ * Symbol sprite dùng chung: <svg class="icon-xh"><use href="#xh-sword"/></svg>
+ * Tất cả nét vẽ dùng currentColor nên ăn theo màu chủ đề.
+ */
+
+:root {
+  --xh-gold: #c9a227;
+  --xh-jade: #4f9e86;
+  --xh-ink: #2c2a26;
+}
+
+.xh-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.14em;
+  flex-shrink: 0;
+  color: inherit;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Trang trí chữ tiêu đề ---------- */
+.xh-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  margin: 0 0 0.35rem;
+  color: var(--accent-color);
+  opacity: 0.9;
+}
+.xh-title-row .xh-icon {
+  font-size: 1.15rem;
+}
+.xh-title-row .xh-rule {
+  height: 1px;
+  flex: 1;
+  max-width: 90px;
+  background: linear-gradient(90deg, transparent, var(--border-color));
+}
+.xh-title-row .xh-rule.right {
+  background: linear-gradient(90deg, var(--border-color), transparent);
+}
+
+/* ---------- Huy hiệu thư các ở header ---------- */
+.brand-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent-color);
+  color: var(--accent-color);
+  background: var(--accent-light, rgba(0, 0, 0, 0.04));
+  flex-shrink: 0;
+}
+.brand-seal .xh-icon {
+  font-size: 1rem;
+}
+
+/* ---------- Đường phân cách kiểu thư các ---------- */
+.xh-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 1.75rem 0;
+  color: var(--accent-color);
+  opacity: 0.55;
+}
+.xh-divider .xh-line {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+}
+.xh-divider .xh-icon {
+  font-size: 0.95rem;
+}
+
+/* ---------- Nhãn trang trí ở tiêu đề mục ---------- */
+.section-header-title .xh-icon {
+  color: var(--accent-color);
+  font-size: 1.05rem;
+}
+
+/* ---------- Trạng thái rỗng ---------- */
+.empty-state .xh-icon {
+  font-size: 3.4rem;
+  color: var(--accent-color);
+  opacity: 0.75;
+}
+
+/* ---------- Nút / thẻ có icon tiên hiệp ---------- */
+.xh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.library-wrapper {
+  position: relative;
+}
+.library-wrapper::before,
+.library-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 46%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-color));
+  pointer-events: none;
+}
+.library-wrapper::before {
+  left: 0;
+}
+.library-wrapper::after {
+  right: 0;
+  background: linear-gradient(90deg, var(--border-color), transparent);
+}
+
+/* ---------- Trang đăng nhập ---------- */
+.auth-brand-seal {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  background: var(--accent-light, rgba(0, 0, 0, 0.04));
+  margin-bottom: 0.85rem;
+}
+.auth-brand-seal .xh-icon {
+  font-size: 1.7rem;
+}
+
+/* ---------- Footer truyện ---------- */
+.reader-footer .xh-icon {
+  color: var(--accent-color);
+  opacity: 0.8;
+  font-size: 0.95rem;
+}
+
+/* ---------- Chip thông tin trong sách ---------- */
+.book-badge .xh-icon {
+  font-size: 0.85rem;
+  vertical-align: -0.18em;
+}
+.history-meta-text .xh-icon {
+  font-size: 0.8rem;
+  vertical-align: -0.15em;
+  opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+  .xh-title-row .xh-rule {
+    max-width: 48px;
+  }
+}
