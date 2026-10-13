@@ -93,6 +93,16 @@ export default function App() {
     setTimeout(() => setToast(null), ms);
   }, []);
 
+  // Dòng được coi là "đang nhìn thấy" nếu toàn bộ chiều cao của nó nằm trong
+  // vùng đọc, trừ header cố định ở trên và chừa mép dưới.
+  const isElementFullyVisible = useCallback((el) => {
+    const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 56;
+    const topLimit = headerH + 8;
+    const bottomLimit = window.innerHeight - 8;
+    const r = el.getBoundingClientRect();
+    return r.top >= topLimit && r.bottom <= bottomLimit;
+  }, []);
+
   // Sync settings with DOM & localStorage
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
@@ -474,7 +484,12 @@ export default function App() {
 
     if (next >= 0) {
       const el = document.querySelector(`.reader-body [data-p="${target}"]`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Chỉ cuộn khi dòng vừa ghim THỰC SỰ bị khuất khỏi tầm nhìn. Trước đây
+      // luôn dùng block:'center' nên mỗi lần ghim là trang bị kéo ra giữa màn
+      // hình - rất khó chịu khi dòng đó đang nằm ngay trước mắt.
+      if (el && !isElementFullyVisible(el)) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
       showToast('Đã ghim dòng đang đọc');
     } else {
       showToast('Đã bỏ ghim dòng');
