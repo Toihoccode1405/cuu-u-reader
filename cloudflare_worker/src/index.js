@@ -344,6 +344,7 @@ export default {
           scroll_percent: record.scroll_percent,
           para_index: record.para_index || 0,
           focus_para: record.focus_para ?? -1,
+          focus_chapter: record.focus_chapter ?? -1,
           has_cover: !!record.has_cover,
           added_at: record.added_at
         },
@@ -419,7 +420,7 @@ export default {
     const matchProgress = path.match(/^\/api\/books\/([^\/]+)\/progress$/);
     if (matchProgress && request.method === 'POST') {
       const bookId = matchProgress[1];
-      const { chapter_index, scroll_percent, chapter_title, book_title, para_index, focus_para } = await request.json();
+      const { chapter_index, scroll_percent, chapter_title, book_title, para_index, focus_para, focus_chapter } = await request.json();
 
       let resolvedTitle = book_title;
       if (!resolvedTitle || resolvedTitle === 'Sách') {
@@ -429,14 +430,18 @@ export default {
 
       const paraIdx = Number.isFinite(para_index) ? para_index : 0;
       const focusIdx = Number.isFinite(focus_para) ? focus_para : -1;
+      // -1 = không ghim; ngược lại ghim gắn với đúng chương đang đọc
+      const focusChap = Number.isFinite(focus_chapter)
+        ? focus_chapter
+        : (focusIdx >= 0 ? chapter_index : -1);
 
       await env.DB.prepare(
-        'UPDATE books SET current_chapter = ?, scroll_percent = ?, para_index = ?, focus_para = ? WHERE id = ? AND user_id = ?'
-      ).bind(chapter_index, scroll_percent, paraIdx, focusIdx, bookId, userId).run();
+        'UPDATE books SET current_chapter = ?, scroll_percent = ?, para_index = ?, focus_para = ?, focus_chapter = ? WHERE id = ? AND user_id = ?'
+      ).bind(chapter_index, scroll_percent, paraIdx, focusIdx, focusChap, bookId, userId).run();
 
       await env.DB.prepare(`
-        INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, para_index, focus_para, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, para_index, focus_para, focus_chapter, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, book_id) DO UPDATE SET
           book_title = excluded.book_title,
           chapter_index = excluded.chapter_index,
@@ -444,8 +449,9 @@ export default {
           scroll_percent = excluded.scroll_percent,
           para_index = excluded.para_index,
           focus_para = excluded.focus_para,
+          focus_chapter = excluded.focus_chapter,
           updated_at = excluded.updated_at
-      `).bind(userId, bookId, resolvedTitle, chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, paraIdx, focusIdx, Date.now()).run();
+      `).bind(userId, bookId, resolvedTitle, chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, paraIdx, focusIdx, focusChap, Date.now()).run();
 
       return jsonResponse({ success: true });
     }
@@ -453,7 +459,7 @@ export default {
     // 8. History: Full reading history for multiple books
     if (path === '/api/history' && request.method === 'GET') {
       const { results } = await env.DB.prepare(`
-        SELECT p.book_id, COALESCE(b.title, p.book_title) AS book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.para_index, p.focus_para, p.updated_at,
+        SELECT p.book_id, COALESCE(b.title, p.book_title) AS book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.para_index, p.focus_para, p.focus_chapter, p.updated_at,
                b.author, b.total_chapters, b.has_cover
         FROM progress p
         LEFT JOIN books b ON p.book_id = b.id

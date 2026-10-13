@@ -81,6 +81,7 @@ export default function App() {
   const touchStartYRef = useRef(0);
   const pendingRestoreRef = useRef(null);
   const focusParaRef = useRef(-1);
+  const focusChapterRef = useRef(-1);
   const tapRef = useRef({ para: -1, time: 0 });
   const tapTimerRef = useRef(null);
   const shortcutsRef = useRef({});
@@ -259,8 +260,10 @@ export default function App() {
       const para = restorePara !== null ? restorePara : (bookData.record.para_index || 0);
       const pct = restoreScroll || bookData.record.scroll_percent || 0;
       const focus = bookData.record.focus_para ?? -1;
+      const focusChapter = bookData.record.focus_chapter ?? -1;
       focusParaRef.current = focus;
-      await loadChapter(bookId, targetChapter, pct, bookData.record.title, para, focus);
+      focusChapterRef.current = focusChapter;
+      await loadChapter(bookId, targetChapter, pct, bookData.record.title, para, focus, focusChapter);
     } catch (e) {
       showToast(e.message);
     } finally {
@@ -268,7 +271,7 @@ export default function App() {
     }
   };
 
-  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null, restoreFocus = null) => {
+  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null, restoreFocus = null, restoreFocusChapter = null) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
@@ -277,7 +280,12 @@ export default function App() {
       const data = await res.json();
 
       // Queue exact-position restore; consumed by the render effect below
-      pendingRestoreRef.current = { para: restorePara, pct: restoreScroll || 0, focus: restoreFocus };
+      pendingRestoreRef.current = {
+        para: restorePara,
+        pct: restoreScroll || 0,
+        focus: restoreFocus,
+        focusChapter: restoreFocusChapter
+      };
 
       window.scrollTo({ top: 0, behavior: 'instant' });
       setCurrentChapter(data);
@@ -352,13 +360,17 @@ export default function App() {
       });
   }, []);
 
-  // Dòng đang được ghim (nhấn 2 lần) - giữ lại qua các lần mở sách
+  // Dòng đang được ghim (nhấn 2 lần) - giữ lại qua các lần mở sách.
+  // Ghim luôn gắn với ĐÚNG chương đã ghim: sang chương khác thì không sáng nữa,
+  // nhưng quay lại chương cũ vẫn còn nguyên.
   const paintFocus = useCallback((paraIdx) => {
     document.querySelectorAll('.focused-line').forEach(el => el.classList.remove('focused-line'));
     if (paraIdx === null || paraIdx === undefined || paraIdx < 0) return;
+    if (focusChapterRef.current !== chapterIndex) return;
     const el = document.querySelector(`.reader-body [data-p="${paraIdx}"]`);
     if (el) el.classList.add('focused-line');
-  }, []);
+  }, [chapterIndex]);
+
 
   const isParaBookmarked = useCallback((paraIdx) => {
     return bookmarks.some(b => b.chapter_index === chapterIndex && b.para_index === paraIdx);
@@ -406,10 +418,6 @@ export default function App() {
     return [];
   };
 
-  const getActiveExcerpt = () => {
-    const el = document.querySelector(`.reader-body [data-p="${getActiveParaIndex()}"]`);
-    return el ? (el.textContent || '').trim().slice(0, 160) : '';
-  };
 
   // Cắm/bỏ cờ ở một dòng bất kỳ (dùng cho cả nút trên thanh công cụ và nhấn 2 lần)
   const flagParagraph = async (paraIndex) => {
@@ -453,9 +461,12 @@ export default function App() {
 
   const toggleFocusLine = (paraIdx) => {
     const target = Number.isFinite(paraIdx) ? paraIdx : getActiveParaIndex();
-    const next = focusParaRef.current === target ? -1 : target;
+    const isSamePin = focusChapterRef.current === chapterIndex && focusParaRef.current === target;
+    const next = isSamePin ? -1 : target;
+    const nextChapter = next >= 0 ? chapterIndex : -1;
 
     focusParaRef.current = next;
+    focusChapterRef.current = nextChapter;
     setFocusParaIndex(next);
     paintFocus(next);
 
@@ -476,7 +487,8 @@ export default function App() {
         computeScrollPercent(),
         currentBook?.record?.title || currentBook?.title,
         getActiveParaIndex(),
-        next
+        next,
+        nextChapter
       );
     }
   };
@@ -520,11 +532,12 @@ export default function App() {
     return sh > 0 ? Math.min(100, Math.max(0, (st / sh) * 100)) : 0;
   };
 
-  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0, focusPara = null) => {
+  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0, focusPara = null, focusChapter = null) => {
     if (!cloudToken || !bookId) return;
     try {
       const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Sách';
       const focusIdx = focusPara === null ? focusParaRef.current : focusPara;
+      const focusChap = focusChapter === null ? focusChapterRef.current : focusChapter;
       await fetch(getApiUrl(`/api/books/${bookId}/progress`), {
         method: 'POST',
         headers: {
@@ -537,6 +550,7 @@ export default function App() {
           scroll_percent: scrollPct,
           para_index: paraIndex,
           focus_para: focusIdx,
+          focus_chapter: focusChap,
           book_title: bTitle
         })
       });
@@ -570,15 +584,20 @@ export default function App() {
 
     applyBookmarkMarkers(bookmarks, chapterIndex);
 
-    // Dòng ghim: khôi phục từ server, hoặc tự ghim dòng vừa khôi phục vị trí
-    const serverFocus = currentBook?.record?.focus_para;
-    const focusTarget = pending?.focus !== undefined && pending?.focus !== null
-      ? pending.focus
-      : (serverFocus !== undefined && serverFocus !== null ? serverFocus : -1);
+    // Dòng ghim: ghim gắn với một chương cụ thể.
+    //  - Mở sách: lấy ghim từ server.
+    //  - Chuyển chương bằng phím/vuốt: GIỮ NGUYÊN ghim cũ (không dời sang chương mới).
+    //  - Nhấn "Đọc tiếp"/chọn chương: ghim đi kèm vị trí đang đọc.
+    if (pending && pending.focusChapter !== undefined && pending.focusChapter !== null) {
+      focusChapterRef.current = pending.focusChapter;
+    }
+    if (pending && pending.focus !== undefined && pending.focus !== null) {
+      focusParaRef.current = pending.focus;
+    }
 
-    focusParaRef.current = focusTarget;
-    setFocusParaIndex(focusTarget);
-    paintFocus(focusTarget);
+    const pinnedHere = focusChapterRef.current === chapterIndex && focusParaRef.current >= 0;
+    setFocusParaIndex(pinnedHere ? focusParaRef.current : -1);
+    paintFocus(pinnedHere ? focusParaRef.current : -1);
 
     if (pending && pending.para !== null && pending.para !== undefined) {
       let attempts = 0;
@@ -588,14 +607,15 @@ export default function App() {
           window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
         }
       };
-      const target = pending.focus !== null && pending.focus !== undefined && pending.focus >= 0
-        ? pending.focus
+      // Ưu tiên ghim của đúng chương này; nếu không thì dùng vị trí đang đọc
+      const target = pinnedHere
+        ? focusParaRef.current
         : pending.para;
       const tryRestore = () => {
         const el = document.querySelector(`.reader-body [data-p="${target}"]`);
         if (el) {
-          flashParagraph(pending.para, { scroll: true, keepMs: 6000 });
-          setActiveParaIndex(pending.para);
+          flashParagraph(target, { scroll: true, keepMs: 6000 });
+          setActiveParaIndex(target);
         } else if (attempts < 6) {
           // Images/fonts can still be settling; retry briefly
           attempts += 1;
