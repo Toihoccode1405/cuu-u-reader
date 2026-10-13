@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS chapters (
   PRIMARY KEY (book_id, chapter_index)
 );
 
+CREATE TABLE IF NOT EXISTS book_chunks (
+  book_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY (book_id, chunk_index)
+);
+
 CREATE TABLE IF NOT EXISTS progress (
   user_id TEXT NOT NULL,
   book_id TEXT NOT NULL,
