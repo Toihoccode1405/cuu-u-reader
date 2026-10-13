@@ -8,69 +8,123 @@
   --max-content-width: 820px;
   --reader-font-size: 19px;
   --reader-line-height: 1.75;
+  --reader-letter-spacing: 0px;
   --transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  --scrollbar-thumb: #b08d57;
+  --scrollbar-track: transparent;
 }
 
-/* 1. Sáng (Paper White) */
+/* 1. Bạch Ngọc (Sáng - Ngọc trắng) */
 html[data-theme="white"] {
-  --bg-primary: #fcfbf9;
+  --bg-primary: #fbfaf7;
   --bg-surface: #ffffff;
-  --bg-secondary: #f4f2ee;
-  --text-primary: #1c1c1f;
-  --text-secondary: #63636e;
-  --border-color: #e6e4df;
-  --accent-color: #7c3aed;
-  --accent-hover: #6d28d9;
-  --accent-light: rgba(124, 58, 237, 0.1);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
+  --bg-secondary: #f1efe9;
+  --text-primary: #262119;
+  --text-secondary: #6b6459;
+  --border-color: #e2ddd1;
+  --accent-color: #8a6a2f;
+  --accent-hover: #6f5323;
+  --accent-light: rgba(138, 106, 47, 0.12);
+  --shadow-sm: 0 2px 8px rgba(38, 33, 25, 0.05);
+  --shadow-lg: 0 12px 32px rgba(38, 33, 25, 0.10);
+  --scrollbar-thumb: #cbb389;
 }
 
-/* 2. Ấm áp (Warm Sepia) */
+/* 2. Hoàng Ngọc (Ấm áp - Ngọc vàng) */
 html[data-theme="sepia"] {
-  --bg-primary: #f5eedb;
-  --bg-surface: #ede3cb;
-  --bg-secondary: #e2d7bd;
-  --text-primary: #382c20;
-  --text-secondary: #705e4d;
-  --border-color: #d6caa9;
-  --accent-color: #92400e;
-  --accent-hover: #78350f;
-  --accent-light: rgba(146, 64, 14, 0.12);
-  --shadow-sm: 0 2px 8px rgba(78, 59, 39, 0.06);
-  --shadow-lg: 0 12px 32px rgba(78, 59, 39, 0.12);
+  --bg-primary: #f7f0dc;
+  --bg-surface: #efe4c9;
+  --bg-secondary: #e5d8b6;
+  --text-primary: #3b2f20;
+  --text-secondary: #6f5c42;
+  --border-color: #d8c7a0;
+  --accent-color: #9a6b16;
+  --accent-hover: #7c530f;
+  --accent-light: rgba(154, 107, 22, 0.14);
+  --shadow-sm: 0 2px 8px rgba(78, 59, 39, 0.07);
+  --shadow-lg: 0 12px 32px rgba(78, 59, 39, 0.13);
+  --scrollbar-thumb: #c2a266;
 }
 
-/* 3. Tối (Slate Dark) */
+/* 3. Huyền Thiết (Tối - Sắt đen) */
 html[data-theme="slate"] {
-  --bg-primary: #181920;
-  --bg-surface: #22242e;
-  --bg-secondary: #2b2e3c;
-  --text-primary: #e4e7ec;
-  --text-secondary: #98a2b3;
-  --border-color: #323545;
-  --accent-color: #8b5cf6;
-  --accent-hover: #7c3aed;
-  --accent-light: rgba(139, 92, 246, 0.15);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --bg-primary: #14161c;
+  --bg-surface: #1d212a;
+  --bg-secondary: #262b36;
+  --text-primary: #e6e2d6;
+  --text-secondary: #9aa1ad;
+  --border-color: #333947;
+  --accent-color: #c9a227;
+  --accent-hover: #dab63c;
+  --accent-light: rgba(201, 162, 39, 0.16);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --scrollbar-thumb: #4a5162;
 }
 
-/* 4. OLED Đen Tuyệt Đối (AMOLED Black) */
+/* 4. U Minh (OLED - Đen tuyệt đối) */
 html[data-theme="oled"] {
   --bg-primary: #000000;
-  --bg-surface: #0e0e10;
-  --bg-secondary: #18181c;
-  --text-primary: #cccccc;
-  --text-secondary: #777777;
-  --border-color: #222226;
-  --accent-color: #a78bfa;
-  --accent-hover: #8b5cf6;
-  --accent-light: rgba(167, 139, 250, 0.15);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.8);
+  --bg-surface: #0c0d11;
+  --bg-secondary: #15171d;
+  --text-primary: #d8d6ce;
+  --text-secondary: #7d8291;
+  --border-color: #22252d;
+  --accent-color: #b98a2c;
+  --accent-hover: #d3a13a;
+  --accent-light: rgba(185, 138, 44, 0.16);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.85);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.95);
+  --scrollbar-thumb: #2b2f3a;
+}
+
+/* 5. Thanh Liên (Xanh ngọc bích) */
+html[data-theme="jade"] {
+  --bg-primary: #eef5f1;
+  --bg-surface: #f8fdfb;
+  --bg-secondary: #dfece7;
+  --text-primary: #1c2b26;
+  --text-secondary: #556b64;
+  --border-color: #c6ded5;
+  --accent-color: #12695a;
+  --accent-hover: #0d544a;
+  --accent-light: rgba(18, 105, 90, 0.12);
+  --shadow-sm: 0 2px 8px rgba(20, 60, 50, 0.06);
+  --shadow-lg: 0 12px 32px rgba(20, 60, 50, 0.12);
+  --scrollbar-thumb: #9dc4b8;
+}
+
+/* 6. Mặc Họa (Giấy mực tàu) */
+html[data-theme="ink"] {
+  --bg-primary: #e9ebe7;
+  --bg-surface: #f4f5f2;
+  --bg-secondary: #dcdfd9;
+  --text-primary: #1b1d1c;
+  --text-secondary: #5d625f;
+  --border-color: #c8ccc5;
+  --accent-color: #33463f;
+  --accent-hover: #24332e;
+  --accent-light: rgba(51, 70, 63, 0.12);
+  --shadow-sm: 0 2px 8px rgba(27, 29, 28, 0.06);
+  --shadow-lg: 0 12px 32px rgba(27, 29, 28, 0.12);
+  --scrollbar-thumb: #a6aca4;
+}
+
+/* Legacy aliases kept so any older reference still resolves */
+html[data-theme="white"],
+html[data-theme="sepia"],
+html[data-theme="slate"],
+html[data-theme="oled"],
+html[data-theme="jade"],
+html[data-theme="ink"] {
+  --bg-color: var(--bg-primary);
+  --bg-primary-old: var(--bg-primary);
+  --card-bg: var(--bg-surface);
+  --text-main: var(--text-primary);
+  --text-muted: var(--text-secondary);
+  --bg-color: var(--bg-primary);
 }
 
 *, *::before, *::after {
@@ -91,7 +145,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Fonts */
+/* Fonts (tất cả đều có subset tiếng Việt) */
 .font-literata { font-family: 'Literata', Georgia, serif; }
 .font-merriweather { font-family: 'Merriweather', Georgia, serif; }
 .font-lora { font-family: 'Lora', Georgia, serif; }
@@ -99,6 +153,31 @@ body {
 .font-be-vietnam { font-family: 'Be Vietnam Pro', sans-serif; }
 .font-inter { font-family: 'Inter', sans-serif; }
 .font-playfair { font-family: 'Playfair Display', Georgia, serif; }
+.font-eb-garamond { font-family: 'EB Garamond', Garamond, Georgia, serif; }
+.font-cormorant { font-family: 'Cormorant Garamond', Garamond, Georgia, serif; }
+.font-noto-serif { font-family: 'Noto Serif', Georgia, serif; }
+.font-noto-serif-display { font-family: 'Noto Serif Display', Georgia, serif; }
+.font-spectral { font-family: 'Spectral', Georgia, serif; }
+.font-vollkorn { font-family: 'Vollkorn', Georgia, serif; }
+.font-source-serif { font-family: 'Source Serif 4', Georgia, serif; }
+.font-alegreya { font-family: 'Alegreya', Georgia, serif; }
+.font-crimson { font-family: 'Crimson Pro', Georgia, serif; }
+.font-gelasio { font-family: 'Gelasio', Georgia, serif; }
+.font-petrona { font-family: 'Petrona', Georgia, serif; }
+.font-noticia { font-family: 'Noticia Text', Georgia, serif; }
+.font-bitter { font-family: 'Bitter', Georgia, serif; }
+.font-faustina { font-family: 'Faustina', Georgia, serif; }
+
+/* Chữ tiêu đề mang hơi hướng cổ điển */
+.chapter-header-title,
+.brand,
+.auth-brand-title,
+.section-header-title {
+  letter-spacing: 0.01em;
+}
+.chapter-header-title {
+  font-family: 'Noto Serif Display', 'Literata', Georgia, serif;
+}
 
 /* Buttons */
 .btn {
@@ -617,23 +696,85 @@ body {
   margin-top: 0.5rem;
   word-wrap: break-word;
   overflow-wrap: anywhere;
+  letter-spacing: var(--reader-letter-spacing);
+}
+/* Nội dung EPUB cũ có thể còn style inline (font-size, text-align...) -> vô hiệu hoá */
+.reader-body font,
+.reader-body p,
+.reader-body div,
+.reader-body span {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  background: transparent !important;
 }
 .reader-body img {
   max-width: 100%;
   height: auto;
 }
+/* Đoạn văn: không thụt đầu dòng, không căn đều (tránh giãn chữ ở dòng tiêu đề) */
+.reader-body p,
+.reader-body div {
+  margin: 0 0 0.75em 0;
+  text-indent: 0 !important;
+  text-align: left;
+}
+/* Căn đều 2 bên: khoảng trắng chỉ giãn giữa các từ, không giãn giữa ký tự */
 .reader-body.text-justify p,
 .reader-body.text-justify div {
-  text-align: justify;
+  text-align: justify !important;
+  text-justify: inter-word;
+  hyphens: none;
+  word-spacing: normal;
+  text-align-last: left;
+}
+/* Căn trái rõ ràng khi người đọc tắt căn đều */
+.reader-body.text-left p,
+.reader-body.text-left div {
+  text-align: left !important;
 }
 .chapter-header-title {
-  font-size: 1.5em;
+  font-size: calc(var(--reader-font-size, 19px) * 1.3);
   font-weight: 700;
   text-align: center;
   line-height: 1.35;
-  margin: 0 0 1.5rem 0;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  margin: 0 0 1.75rem 0;
+  padding-bottom: 1.1rem;
+  border-bottom: none;
+  position: relative;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  text-indent: 0;
+}
+/* Đường phân cách kiểu thư các: chấm tròn + hai nhánh mảnh */
+.chapter-header-title::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(320px, 70%);
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-color) 18%,
+    var(--accent-color) 50%,
+    var(--border-color) 82%,
+    transparent
+  );
+}
+.chapter-header-title::before {
+  content: '❖';
+  position: absolute;
+  left: 50%;
+  bottom: -0.62em;
+  transform: translateX(-50%);
+  font-size: 0.5em;
+  line-height: 1;
+  padding: 0 0.5em;
+  color: var(--accent-color);
+  background: var(--bg-primary);
 }
 .btn-icon {
   display: inline-flex;
@@ -774,12 +915,18 @@ body {
 }
 
 .reader-content-box {
-  max-width: var(--max-content-width);
+  max-width: var(--reader-max-width, var(--max-content-width));
   margin: 0 auto;
   padding: calc(var(--header-height, 56px) + 2.5rem) 1.5rem 5rem 1.5rem;
   font-size: var(--reader-font-size);
   line-height: var(--reader-line-height);
   transition: font-size 0.2s ease, line-height 0.2s ease, max-width 0.2s ease;
+}
+/* Giới hạn bề rộng ruột chữ theo cài đặt nhưng không vượt khung */
+@media (min-width: 1025px) {
+  .reader-content-box {
+    max-width: min(var(--reader-max-width, 820px), 92vw);
+  }
 }
 .reader-content-box h1, .reader-content-box h2 {
   font-size: 1.55em;
@@ -950,10 +1097,67 @@ body {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 2px var(--accent-color);
 }
-.theme-badge.theme-paper { background: #ffffff; color: #1c1c1f; }
-.theme-badge.theme-sepia { background: #ede3cb; color: #3b2f22; }
-.theme-badge.theme-dark  { background: #22242e; color: #e6e8ee; }
+.theme-badge.theme-paper { background: #fbfaf7; color: #262119; }
+.theme-badge.theme-sepia { background: #efe4c9; color: #3b2f20; }
+.theme-badge.theme-dark  { background: #1d212a; color: #e6e2d6; }
 .theme-badge.theme-oled  { background: #000000; color: #cfcfcf; }
+.theme-badge.theme-jade  { background: #dff0ea; color: #10453b; }
+.theme-badge.theme-ink   { background: #e9ebe7; color: #1b1d1c; }
+
+/* Hàng điều chỉnh dạng thanh trượt */
+.setting-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background-color: var(--bg-primary);
+}
+.setting-range-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.toggle-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.setting-toggle {
+  padding: 0.65rem 0.5rem;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.setting-toggle:hover {
+  border-color: var(--accent-color);
+}
+.setting-toggle.active {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+.settings-reset-btn {
+  margin-top: 1.5rem;
+  padding: 0.7rem;
+  border-radius: 9px;
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.settings-reset-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
 
 /* Font choices */
 .font-options {

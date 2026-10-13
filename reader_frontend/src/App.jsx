@@ -54,6 +54,9 @@ export default function App() {
         const themeMap = { paper: 'white', dark: 'slate' };
         if (themeMap[parsed.theme]) parsed.theme = themeMap[parsed.theme];
         if (parsed.font === 'font-vietnam') parsed.font = 'font-be-vietnam';
+        if (parsed.letterSpacing === undefined) parsed.letterSpacing = 0;
+        if (parsed.fontSize === undefined) parsed.fontSize = 19;
+        if (parsed.lineHeight === undefined) parsed.lineHeight = 1.8;
         return parsed;
       } catch (e) {}
     }
@@ -62,7 +65,8 @@ export default function App() {
       font: 'font-literata',
       fontSize: 19,
       lineHeight: 1.8,
-      maxWidth: 780,
+      letterSpacing: 0,
+      maxWidth: 820,
       justify: true
     };
   });
@@ -83,6 +87,7 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
     document.documentElement.style.setProperty('--reader-line-height', settings.lineHeight);
+    document.documentElement.style.setProperty('--reader-letter-spacing', `${settings.letterSpacing}px`);
     document.documentElement.style.setProperty('--reader-max-width', `${settings.maxWidth}px`);
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
   }, [settings]);
@@ -846,7 +851,7 @@ export default function App() {
           <main className="reader-content-box">
             <h1 className="chapter-header-title">{currentChapter.title}</h1>
             <div
-              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : ''}`}
+              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
               dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
             />
 
@@ -929,40 +934,47 @@ export default function App() {
               <div className="settings-section">
                 <label className="settings-label">Màu Nền / Chủ Đề</label>
                 <div className="theme-options">
-                  <div
-                    className={`theme-badge theme-paper ${settings.theme === 'white' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'white' }))}
-                  >
-                    Sáng
-                  </div>
-                  <div
-                    className={`theme-badge theme-sepia ${settings.theme === 'sepia' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'sepia' }))}
-                  >
-                    Ấm áp
-                  </div>
-                  <div
-                    className={`theme-badge theme-dark ${settings.theme === 'slate' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'slate' }))}
-                  >
-                    Tối
-                  </div>
-                  <div
-                    className={`theme-badge theme-oled ${settings.theme === 'oled' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'oled' }))}
-                  >
-                    OLED
-                  </div>
+                  {[
+                    { id: 'white', cls: 'theme-paper', name: 'Bạch Ngọc' },
+                    { id: 'sepia', cls: 'theme-sepia', name: 'Hoàng Ngọc' },
+                    { id: 'slate', cls: 'theme-dark', name: 'Huyền Thiết' },
+                    { id: 'oled', cls: 'theme-oled', name: 'U Minh' },
+                    { id: 'jade', cls: 'theme-jade', name: 'Thanh Liên' },
+                    { id: 'ink', cls: 'theme-ink', name: 'Mặc Họa' }
+                  ].map(t => (
+                    <div
+                      key={t.id}
+                      className={`theme-badge ${t.cls} ${settings.theme === t.id ? 'active' : ''}`}
+                      onClick={() => setSettings(s => ({ ...s, theme: t.id }))}
+                    >
+                      {t.name}
+                    </div>
+                  ))}
                 </div>
 
                 <label className="settings-label">Font Chữ</label>
                 <div className="font-options">
                   {[
-                    { id: 'font-literata', name: 'Literata (Sách)' },
-                    { id: 'font-merriweather', name: 'Merriweather (Serif)' },
-                    { id: 'font-lora', name: 'Lora (Cổ điển)' },
+                    { id: 'font-literata', name: 'Literata' },
+                    { id: 'font-noto-serif-display', name: 'Noto Serif Display' },
+                    { id: 'font-merriweather', name: 'Merriweather' },
+                    { id: 'font-lora', name: 'Lora' },
+                    { id: 'font-eb-garamond', name: 'EB Garamond' },
+                    { id: 'font-cormorant', name: 'Cormorant Garamond' },
+                    { id: 'font-playfair', name: 'Playfair Display' },
+                    { id: 'font-spectral', name: 'Spectral' },
+                    { id: 'font-vollkorn', name: 'Vollkorn' },
+                    { id: 'font-source-serif', name: 'Source Serif 4' },
+                    { id: 'font-alegreya', name: 'Alegreya' },
+                    { id: 'font-crimson', name: 'Crimson Pro' },
+                    { id: 'font-gelasio', name: 'Gelasio' },
+                    { id: 'font-petrona', name: 'Petrona' },
+                    { id: 'font-noticia', name: 'Noticia Text' },
+                    { id: 'font-faustina', name: 'Faustina' },
+                    { id: 'font-bitter', name: 'Bitter' },
+                    { id: 'font-noto-serif', name: 'Noto Serif' },
                     { id: 'font-be-vietnam', name: 'Be Vietnam Pro' },
-                    { id: 'font-inter', name: 'Inter (Sans)' }
+                    { id: 'font-inter', name: 'Inter' }
                   ].map(f => (
                     <div
                       key={f.id}
@@ -975,32 +987,123 @@ export default function App() {
                 </div>
 
                 <label className="settings-label">Cỡ Chữ: {settings.fontSize}px</label>
-                <div className="font-size-control">
+                <div className="setting-range-row">
                   <button
                     className="size-btn"
                     onClick={() => setSettings(s => ({ ...s, fontSize: Math.max(14, s.fontSize - 1) }))}
                   >
                     A-
                   </button>
-                  <span style={{ fontWeight: 600 }}>{settings.fontSize}px</span>
+                  <input
+                    type="range"
+                    min="14"
+                    max="34"
+                    step="1"
+                    value={settings.fontSize}
+                    onChange={(e) => setSettings(s => ({ ...s, fontSize: parseInt(e.target.value, 10) }))}
+                  />
                   <button
                     className="size-btn"
-                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.min(32, s.fontSize + 1) }))}
+                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.min(34, s.fontSize + 1) }))}
                   >
                     A+
                   </button>
                 </div>
 
-                <label className="settings-label">Căn Đều 2 Bên</label>
-                <div style={{ display: 'flex', gap: 10 }}>
+                <label className="settings-label">Khoảng Cách Chữ: {settings.letterSpacing}px</label>
+                <div className="setting-range-row">
                   <button
-                    className={`theme-badge ${settings.justify ? 'active' : ''}`}
-                    style={{ flex: 1, textAlign: 'center' }}
-                    onClick={() => setSettings(s => ({ ...s, justify: !s.justify }))}
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, letterSpacing: Math.max(0, +(s.letterSpacing - 0.25).toFixed(2)) }))}
                   >
-                    {settings.justify ? 'Đang căn đều' : 'Căn trái'}
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="4"
+                    step="0.25"
+                    value={settings.letterSpacing}
+                    onChange={(e) => setSettings(s => ({ ...s, letterSpacing: parseFloat(e.target.value) }))}
+                  />
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, letterSpacing: Math.min(4, +(s.letterSpacing + 0.25).toFixed(2)) }))}
+                  >
+                    +
                   </button>
                 </div>
+
+                <label className="settings-label">Giãn Dòng: {settings.lineHeight.toFixed(2)}</label>
+                <div className="setting-range-row">
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.max(1.2, +(s.lineHeight - 0.05).toFixed(2)) }))}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min="1.2"
+                    max="2.6"
+                    step="0.05"
+                    value={settings.lineHeight}
+                    onChange={(e) => setSettings(s => ({ ...s, lineHeight: parseFloat(e.target.value) }))}
+                  />
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.min(2.6, +(s.lineHeight + 0.05).toFixed(2)) }))}
+                  >
+                    +
+                  </button>
+                </div>
+
+                <label className="settings-label">Bề Rộng Trang: {settings.maxWidth}px</label>
+                <div className="setting-range-row">
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, maxWidth: Math.max(520, s.maxWidth - 40) }))}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min="520"
+                    max="1200"
+                    step="20"
+                    value={settings.maxWidth}
+                    onChange={(e) => setSettings(s => ({ ...s, maxWidth: parseInt(e.target.value, 10) }))}
+                  />
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, maxWidth: Math.min(1200, s.maxWidth + 40) }))}
+                  >
+                    +
+                  </button>
+                </div>
+
+                <label className="settings-label">Căn Lề Chữ</label>
+                <div className="toggle-row">
+                  <button
+                    className={`setting-toggle ${settings.justify ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, justify: true }))}
+                  >
+                    Căn Đều 2 Bên
+                  </button>
+                  <button
+                    className={`setting-toggle ${!settings.justify ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, justify: false }))}
+                  >
+                    Căn Trái
+                  </button>
+                </div>
+
+                <button
+                  className="settings-reset-btn"
+                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true })}
+                >
+                  Khôi Phục Mặc Định
+                </button>
               </div>
             </div>
           </div>

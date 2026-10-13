@@ -400,6 +400,7 @@ export default {
 
           const zip = await JSZip.loadAsync(merged);
           content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
+          content_html = stripDuplicateHeading(content_html, title);
         }
       }
 
@@ -920,12 +921,66 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
   return { title, author, coverBase64, chapters };
 }
 
+// Chuẩn hoá HTML trích ra: bỏ thẻ định dạng/class/attr lạ của EPUB,
+// dựng lại thành các đoạn <p> sạch để CSS của trình đọc kiểm soát hoàn toàn.
 function cleanXhtml(raw) {
   let bodyContent = raw;
   const bodyM = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyM) bodyContent = bodyM[1];
-  return bodyContent
+
+  bodyContent = bodyContent
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<title[\s\S]*?<\/title>/gi, '')
+    .replace(/<link\b[^>]*>/gi, '')
+    .replace(/<span\b[^>]*><\/span>/gi, '');
+
+  const plain = (s) => (s || '')
+    .replace(/<(font|strong|b)\b[^>]*>/gi, '')
+    .replace(/<\/(font|strong|b)>/gi, '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(i|em|u|a|small|big|sub|sup)\b[^>]*>/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const paragraphs = [];
+  const blockRe = /<(p|div|h1|h2|h3|h4|h5|h6)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m;
+  while ((m = blockRe.exec(bodyContent)) !== null) {
+    const text = plain(m[2]);
+    if (text.length > 0) paragraphs.push(text);
+  }
+
+  // Fallback: không có thẻ khối nào (HTML phẳng) -> chia theo <br>
+  if (paragraphs.length === 0) {
+    bodyContent.split(/<br\s*\/?>/gi).forEach(chunk => {
+      const text = plain(chunk);
+      if (text.length > 0) paragraphs.push(text);
+    });
+  }
+
+  return paragraphs.map(t => `<p>${t}</p>`).join('\n');
+}
+
+// So sánh tiêu đề đã bỏ dấu câu/khoảng trắng để phát hiện dòng tiêu đề lặp lại
+function normalizeHeading(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[\s\u00a0]+/g, '')
+    .replace(/[.,:;!?"'“”‘’()\[\]\-–—…]/g, '');
+}
+
+// Nhiều EPUB lặp lại tiêu đề chương ngay dòng đầu nội dung -> bỏ để không trùng với tiêu đề của trình đọc
+function stripDuplicateHeading(html, chapterTitle) {
+  if (!html || !chapterTitle) return html;
+  const m = html.match(/^<p>([\s\S]*?)<\/p>\s*/);
+  if (!m) return html;
+  const first = normalizeHeading(m[1]);
+  const title = normalizeHeading(chapterTitle);
+  if (!first || !title) return html;
+  if (first === title || (first.startsWith(title) && first.length <= title.length + 6)) {
+    return html.slice(m[0].length);
+  }
+  return html;
 }
