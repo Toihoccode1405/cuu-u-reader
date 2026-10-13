@@ -61,6 +61,7 @@ export default function App() {
         if (parsed.letterSpacing === undefined) parsed.letterSpacing = 0;
         if (parsed.fontSize === undefined) parsed.fontSize = 19;
         if (parsed.lineHeight === undefined) parsed.lineHeight = 1.8;
+        if (parsed.allowSelect === undefined) parsed.allowSelect = false;
         return parsed;
       } catch (e) {}
     }
@@ -71,7 +72,8 @@ export default function App() {
       lineHeight: 1.8,
       letterSpacing: 0,
       maxWidth: 820,
-      justify: true
+      justify: true,
+      allowSelect: false
     };
   });
 
@@ -1107,7 +1109,7 @@ export default function App() {
             </div>
             <h1 className="chapter-header-title">{currentChapter.title}</h1>
             <div
-              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
+              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
               onClick={handleReaderTap}
               dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
             />
@@ -1358,6 +1360,22 @@ export default function App() {
                   </button>
                 </div>
 
+                <label className="settings-label">Bôi Đen Chữ</label>
+                <div className="toggle-row">
+                  <button
+                    className={`setting-toggle ${!settings.allowSelect ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, allowSelect: false }))}
+                  >
+                    Tắt (nhấn 2 lần để ghim)
+                  </button>
+                  <button
+                    className={`setting-toggle ${settings.allowSelect ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, allowSelect: true }))}
+                  >
+                    Cho phép bôi đen
+                  </button>
+                </div>
+
                 <button
                   className="settings-reset-btn"
                   style={{ marginTop: '0.75rem' }}
@@ -1368,7 +1386,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true })}
+                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true, allowSelect: false })}
                 >
                   Khôi Phục Mặc Định
                 </button>
