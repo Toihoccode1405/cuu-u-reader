@@ -1826,13 +1826,149 @@ input[type="range"] {
 /* PERSISTENT FLAG MARKER (Cờ đánh dấu) */
 .reader-body [data-p].bookmarked-para {
   border-left: 4px solid var(--accent-color);
-  background-color: rgba(194, 89, 30, 0.08);
+  background-color: rgba(194, 89, 30, 0.08) !important;
   padding-left: 12px;
 }
 .reader-body [data-p].bookmarked-para::before {
   content: '⚑ ';
   color: var(--accent-color);
   font-weight: 700;
+}
+
+/* DÒNG ĐANG GHIM (nhấn 2 lần) - giữ sáng để dễ theo dõi khi đọc */
+.reader-body [data-p].focused-line {
+  position: relative;
+  background-color: var(--accent-light, rgba(201, 162, 39, 0.16)) !important;
+  border-left: 4px solid var(--accent-color);
+  border-radius: 4px;
+  padding: 2px 10px 2px 12px;
+  margin-left: -2px;
+  box-shadow: inset 0 0 0 1px var(--accent-light, rgba(201, 162, 39, 0.2));
+  transition: background-color 0.25s ease;
+}
+.reader-body [data-p].focused-line::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  opacity: 0.65;
+}
+
+/* PHÍM TẮT - bảng liệt kê */
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background-color: var(--bg-primary);
+  margin-bottom: 0.4rem;
+}
+.shortcut-key {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  background: var(--accent-light, rgba(0, 0, 0, 0.06));
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.shortcut-desc {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* MENU THAO TÁC NHANH (nhấn 1 lần vào dòng) */
+.quick-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: sheetFade 0.18s ease;
+}
+@keyframes sheetFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.quick-sheet {
+  width: min(560px, 100%);
+  background: var(--bg-surface);
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  padding: 1.1rem 1.1rem calc(1.1rem + var(--safe-bottom));
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.22);
+  animation: sheetUp 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes sheetUp {
+  from { transform: translateY(18px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.quick-sheet-excerpt {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.quick-sheet-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.85rem 0.4rem;
+  border-radius: 11px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+.quick-action:hover,
+.quick-action:active {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--accent-light, rgba(0, 0, 0, 0.05));
+}
+.quick-sheet-close {
+  margin-top: 0.85rem;
+  width: 100%;
+  padding: 0.7rem;
+  border-radius: 10px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
 /* Flag toggle button */

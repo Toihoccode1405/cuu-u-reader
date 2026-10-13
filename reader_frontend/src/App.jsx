@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
-  PlayCircle, User, LogOut, UploadCloud, Flag
+  PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import { getApiUrl } from './api';
@@ -44,6 +44,9 @@ export default function App() {
   // Bookmarks (Cờ đánh dấu vị trí đọc) + exact paragraph tracking
   const [bookmarks, setBookmarks] = useState([]);
   const [activeParaIndex, setActiveParaIndex] = useState(0);
+  const [focusParaIndex, setFocusParaIndex] = useState(-1);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [selectedPara, setSelectedPara] = useState(null);
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
@@ -76,6 +79,9 @@ export default function App() {
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const pendingRestoreRef = useRef(null);
+  const focusParaRef = useRef(-1);
+  const doubleTapRef = useRef(null);
+  const shortcutsRef = useRef({});
 
   const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
@@ -250,7 +256,9 @@ export default function App() {
 
       const para = restorePara !== null ? restorePara : (bookData.record.para_index || 0);
       const pct = restoreScroll || bookData.record.scroll_percent || 0;
-      await loadChapter(bookId, targetChapter, pct, bookData.record.title, para);
+      const focus = bookData.record.focus_para ?? -1;
+      focusParaRef.current = focus;
+      await loadChapter(bookId, targetChapter, pct, bookData.record.title, para, focus);
     } catch (e) {
       showToast(e.message);
     } finally {
@@ -258,7 +266,7 @@ export default function App() {
     }
   };
 
-  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null) => {
+  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null, restoreFocus = null) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
@@ -267,7 +275,7 @@ export default function App() {
       const data = await res.json();
 
       // Queue exact-position restore; consumed by the render effect below
-      pendingRestoreRef.current = { para: restorePara, pct: restoreScroll || 0 };
+      pendingRestoreRef.current = { para: restorePara, pct: restoreScroll || 0, focus: restoreFocus };
 
       window.scrollTo({ top: 0, behavior: 'instant' });
       setCurrentChapter(data);
@@ -342,6 +350,46 @@ export default function App() {
       });
   }, []);
 
+  // Dòng đang được ghim (nhấn 2 lần) - giữ lại qua các lần mở sách
+  const paintFocus = useCallback((paraIdx) => {
+    document.querySelectorAll('.focused-line').forEach(el => el.classList.remove('focused-line'));
+    if (paraIdx === null || paraIdx === undefined || paraIdx < 0) return;
+    const el = document.querySelector(`.reader-body [data-p="${paraIdx}"]`);
+    if (el) el.classList.add('focused-line');
+  }, []);
+
+  const isParaBookmarked = useCallback((paraIdx) => {
+    return bookmarks.some(b => b.chapter_index === chapterIndex && b.para_index === paraIdx);
+  }, [bookmarks, chapterIndex]);
+
+  const openSelectionMenu = (paraIdx) => {
+    const el = document.querySelector(`.reader-body [data-p="${paraIdx}"]`);
+    setSelectedPara({
+      para: paraIdx,
+      excerpt: el ? (el.textContent || '').trim().slice(0, 110) : '',
+      bookmarked: isParaBookmarked(paraIdx)
+    });
+  };
+
+  const flagSelectedPara = async () => {
+    if (!selectedPara) return;
+    setSelectedPara(null);
+    await flagParagraph(selectedPara.para);
+  };
+
+  const copySelectedPara = async () => {
+    if (!selectedPara) return;
+    const el = document.querySelector(`.reader-body [data-p="${selectedPara.para}"]`);
+    const text = el ? (el.textContent || '').trim() : '';
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Đã sao chép đoạn văn');
+    } catch (e) {
+      showToast('Không sao chép được trên thiết bị này');
+    }
+    setSelectedPara(null);
+  };
+
   const loadBookmarks = async (bookId) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
@@ -361,12 +409,13 @@ export default function App() {
     return el ? (el.textContent || '').trim().slice(0, 160) : '';
   };
 
-  const toggleBookmark = async () => {
+  // Cắm/bỏ cờ ở một dòng bất kỳ (dùng cho cả nút trên thanh công cụ và nhấn 2 lần)
+  const flagParagraph = async (paraIndex) => {
     const bookId = currentBook?.record?.id || currentBook?.id;
     if (!bookId) return;
 
-    const paraIndex = getActiveParaIndex();
-    const progressPercent = computeScrollPercent();
+    const el = document.querySelector(`.reader-body [data-p="${paraIndex}"]`);
+    const excerpt = el ? (el.textContent || '').trim().slice(0, 160) : '';
 
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
@@ -378,8 +427,8 @@ export default function App() {
         body: JSON.stringify({
           chapter_index: chapterIndex,
           para_index: paraIndex,
-          scroll_percent: progressPercent,
-          excerpt: getActiveExcerpt()
+          scroll_percent: computeScrollPercent(),
+          excerpt
         })
       });
 
@@ -388,13 +437,45 @@ export default function App() {
       applyBookmarkMarkers(list, chapterIndex);
 
       if (data.removed) {
-        showToast('Đã bỏ cờ tại vị trí này');
+        showToast('Đã bỏ cờ tại dòng này');
       } else {
-        showToast('Đã cắm cờ tại vị trí này ⚑');
+        showToast('Đã cắm cờ tại dòng này ⚑');
         flashParagraph(paraIndex, { scroll: false, keepMs: 2200 });
       }
     } catch (e) {
       showToast('Không thể lưu cờ đánh dấu.');
+    }
+  };
+
+  const toggleBookmark = () => flagParagraph(getActiveParaIndex());
+
+  const toggleFocusLine = (paraIdx) => {
+    const target = Number.isFinite(paraIdx) ? paraIdx : getActiveParaIndex();
+    const next = focusParaRef.current === target ? -1 : target;
+
+    focusParaRef.current = next;
+    setFocusParaIndex(next);
+    paintFocus(next);
+
+    if (next >= 0) {
+      const el = document.querySelector(`.reader-body [data-p="${target}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast('Đã ghim dòng đang đọc');
+    } else {
+      showToast('Đã bỏ ghim dòng');
+    }
+
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (bookId) {
+      saveProgressToCloud(
+        bookId,
+        currentChapter?.title || `Chương ${chapterIndex}`,
+        chapterIndex,
+        computeScrollPercent(),
+        currentBook?.record?.title || currentBook?.title,
+        getActiveParaIndex(),
+        next
+      );
     }
   };
 
@@ -437,10 +518,11 @@ export default function App() {
     return sh > 0 ? Math.min(100, Math.max(0, (st / sh) * 100)) : 0;
   };
 
-  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0) => {
+  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0, focusPara = null) => {
     if (!cloudToken || !bookId) return;
     try {
       const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Sách';
+      const focusIdx = focusPara === null ? focusParaRef.current : focusPara;
       await fetch(getApiUrl(`/api/books/${bookId}/progress`), {
         method: 'POST',
         headers: {
@@ -452,6 +534,7 @@ export default function App() {
           chapter_title: chTitle,
           scroll_percent: scrollPct,
           para_index: paraIndex,
+          focus_para: focusIdx,
           book_title: bTitle
         })
       });
@@ -483,8 +566,17 @@ export default function App() {
     const pending = pendingRestoreRef.current;
     pendingRestoreRef.current = null;
 
-    const bmList = bookmarks;
-    applyBookmarkMarkers(bmList, chapterIndex);
+    applyBookmarkMarkers(bookmarks, chapterIndex);
+
+    // Dòng ghim: khôi phục từ server, hoặc tự ghim dòng vừa khôi phục vị trí
+    const serverFocus = currentBook?.record?.focus_para;
+    const focusTarget = pending?.focus !== undefined && pending?.focus !== null
+      ? pending.focus
+      : (serverFocus !== undefined && serverFocus !== null ? serverFocus : -1);
+
+    focusParaRef.current = focusTarget;
+    setFocusParaIndex(focusTarget);
+    paintFocus(focusTarget);
 
     if (pending && pending.para !== null && pending.para !== undefined) {
       let attempts = 0;
@@ -494,8 +586,11 @@ export default function App() {
           window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
         }
       };
+      const target = pending.focus !== null && pending.focus !== undefined && pending.focus >= 0
+        ? pending.focus
+        : pending.para;
       const tryRestore = () => {
-        const el = document.querySelector(`.reader-body [data-p="${pending.para}"]`);
+        const el = document.querySelector(`.reader-body [data-p="${target}"]`);
         if (el) {
           flashParagraph(pending.para, { scroll: true, keepMs: 6000 });
           setActiveParaIndex(pending.para);
@@ -515,7 +610,7 @@ export default function App() {
         window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
       }, 160);
     }
-  }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers]);
+  }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers, paintFocus]);
 
   // Debounced scroll listener for reading position sync
   useEffect(() => {
@@ -556,7 +651,35 @@ export default function App() {
     };
   }, [view, currentBook, currentChapter, chapterIndex, getActiveParaIndex]);
 
-  // Touch swipe gestures for next/prev chapter
+  // Nhấn 2 lần vào một dòng: ghim sáng dòng đó. Nhấn 1 lần: mở menu thao tác nhanh.
+  const handleReaderTap = (e) => {
+    const target = e.target.closest('.reader-body [data-p]');
+    if (!target) return;
+    const paraIdx = parseInt(target.getAttribute('data-p'), 10);
+    if (!Number.isFinite(paraIdx)) return;
+
+    setSelectedPara(null);
+
+    const now = Date.now();
+    const last = doubleTapRef.current;
+    const sameLine = last && last.para === paraIdx;
+
+    if (sameLine && now - last.time < 400) {
+      // Double tap -> ghim sáng dòng này
+      doubleTapRef.current = null;
+      toggleFocusLine(paraIdx);
+    } else {
+      doubleTapRef.current = { para: paraIdx, time: now };
+      // Single tap -> hiện menu nhanh (cắm cờ / sao chép) sau khi chắc chắn không phải nhấn 2 lần
+      setTimeout(() => {
+        const st = doubleTapRef.current;
+        if (st && st.para === paraIdx && Date.now() - st.time >= 380) {
+          openSelectionMenu(paraIdx);
+        }
+      }, 420);
+    }
+  };
+
   const handleTouchStart = (e) => {
     touchStartXRef.current = e.changedTouches[0].screenX;
     touchStartYRef.current = e.changedTouches[0].screenY;
@@ -585,6 +708,88 @@ export default function App() {
       setIsFullscreen(false);
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // KEYBOARD SHORTCUTS (chỉ hoạt động khi đang đọc)
+  // ---------------------------------------------------------------------------
+  shortcutsRef.current = {
+    nextChapter: () => {
+      const bId = currentBook?.record?.id || currentBook?.id;
+      if (bId && currentChapter?.next_index) loadChapter(bId, currentChapter.next_index);
+    },
+    prevChapter: () => {
+      const bId = currentBook?.record?.id || currentBook?.id;
+      if (bId && currentChapter?.prev_index) loadChapter(bId, currentChapter.prev_index);
+    },
+    flag: toggleBookmark,
+    focus: () => toggleFocusLine(),
+    toc: () => setShowTOC(v => !v),
+    settings: () => setShowSettings(v => !v),
+    bookmarks: () => setShowBookmarks(v => !v),
+    shortcuts: () => setShowShortcuts(v => !v),
+    back: () => {
+      setView('library');
+      loadUserData(cloudToken);
+    },
+    fullscreen: toggleFullscreen,
+    increaseFont: () => setSettings(s => ({ ...s, fontSize: Math.min(34, s.fontSize + 1) })),
+    decreaseFont: () => setSettings(s => ({ ...s, fontSize: Math.max(14, s.fontSize - 1) })),
+    toggleJustify: () => setSettings(s => ({ ...s, justify: !s.justify })),
+    closePanels: () => {
+      setShowTOC(false);
+      setShowSettings(false);
+      setShowBookmarks(false);
+      setShowShortcuts(false);
+      setSelectedPara(null);
+    }
+  };
+
+  useEffect(() => {
+    if (view !== 'reader') return;
+
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (e.altKey || e.metaKey) return;
+
+      const s = shortcutsRef.current;
+      const k = e.key;
+
+      if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') {
+        if (k === ' ') { e.preventDefault(); }
+        s.nextChapter();
+      } else if (k === 'ArrowLeft' || k === 'PageUp') {
+        s.prevChapter();
+      } else if (k === 'f' || k === 'F') {
+        s.flag();
+      } else if (k === 'h' || k === 'H') {
+        s.focus();
+      } else if (k === 'c' || k === 'C') {
+        s.toc();
+      } else if (k === 's' || k === 'S') {
+        s.settings();
+      } else if (k === 'm' || k === 'M') {
+        s.bookmarks();
+      } else if (k === '?' || k === '/') {
+        s.shortcuts();
+      } else if (k === '+' || k === '=') {
+        s.increaseFont();
+      } else if (k === '-' || k === '_') {
+        s.decreaseFont();
+      } else if (k === 'j' || k === 'J') {
+        s.toggleJustify();
+      } else if (k === 'F11') {
+        return;
+      } else if (k === 'Escape') {
+        s.closePanels();
+      } else if (k === 'Backspace' || k === 'BrowserBack') {
+        s.back();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [view]);
 
   // ---------------------------------------------------------------------------
   // VIEW 1: AUTH INDEX PAGE (IF NOT LOGGED IN)
@@ -822,27 +1027,37 @@ export default function App() {
 
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
+                  className={`btn btn-icon ${focusParaIndex >= 0 ? 'flag-on' : ''}`}
+                  onClick={() => toggleFocusLine()}
+                  title="Ghim sáng dòng đang đọc (H)"
+                >
+                  <Highlighter size={18} />
+                </button>
+                <button
                   className={`btn btn-icon ${isCurrentParaBookmarked ? 'flag-on' : ''}`}
                   onClick={toggleBookmark}
-                  title={isCurrentParaBookmarked ? 'Bỏ cờ tại vị trí này' : 'Cắm cờ tại vị trí đang đọc'}
+                  title={isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)'}
                 >
-                  <Flag size={19} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />
+                  <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />
                 </button>
                 <button
                   className="btn btn-icon"
                   onClick={() => setShowBookmarks(true)}
-                  title="Danh sách vị trí đã đánh dấu"
+                  title="Danh sách cờ đã cắm (M)"
                 >
-                  <History size={19} />
+                  <History size={18} />
                 </button>
-                <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương">
-                  <List size={20} />
+                <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương (C)">
+                  <List size={19} />
                 </button>
-                <button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Cài đặt giao diện">
-                  <Sliders size={20} />
+                <button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Cài đặt giao diện (S)">
+                  <Sliders size={19} />
+                </button>
+                <button className="btn btn-icon hide-on-mobile" onClick={() => setShowShortcuts(true)} title="Phím tắt (?)">
+                  <Keyboard size={19} />
                 </button>
                 <button className="btn btn-icon hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
-                  {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                  {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
                 </button>
               </div>
             </div>
@@ -852,6 +1067,8 @@ export default function App() {
             <h1 className="chapter-header-title">{currentChapter.title}</h1>
             <div
               className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
+              onDoubleClick={handleReaderTap}
+              onClick={handleReaderTap}
               dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
             />
 
@@ -1100,6 +1317,14 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => { setShowSettings(false); setShowShortcuts(true); }}
+                >
+                  Xem Phím Tắt & Cử Chỉ
+                </button>
+
+                <button
+                  className="settings-reset-btn"
                   onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true })}
                 >
                   Khôi Phục Mặc Định
@@ -1108,7 +1333,78 @@ export default function App() {
             </div>
           </div>
 
-          {/* BOOKMARKS DRAWER */}
+          {/* SHORTCUTS DRAWER */}
+          <div className={`drawer-overlay ${showShortcuts ? 'open' : ''}`} onClick={() => setShowShortcuts(false)}>
+            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="drawer-header">
+                <h3>Phím Tắt & Thao Tác</h3>
+                <button className="btn btn-icon" onClick={() => setShowShortcuts(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="settings-section">
+                <label className="settings-label">Cử chỉ trên màn hình</label>
+                <div className="shortcut-row">
+                  <span className="shortcut-desc">Nhấn 2 lần vào một dòng</span>
+                  <span className="shortcut-key">Ghim sáng dòng đó</span>
+                </div>
+                <div className="shortcut-row">
+                  <span className="shortcut-desc">Nhấn 1 lần vào một dòng</span>
+                  <span className="shortcut-key">Mở menu cắm cờ / sao chép</span>
+                </div>
+                <div className="shortcut-row">
+                  <span className="shortcut-desc">Vuốt ngang</span>
+                  <span className="shortcut-key">Chương trước / sau</span>
+                </div>
+
+                <label className="settings-label">Bàn phím khi đang đọc</label>
+                {[
+                  ['→ / PageDown / Space', 'Chương tiếp theo'],
+                  ['← / PageUp', 'Chương trước'],
+                  ['F', 'Cắm / bỏ cờ ở dòng đang đọc'],
+                  ['H', 'Ghim sáng dòng đang đọc'],
+                  ['C', 'Mở mục lục chương'],
+                  ['M', 'Danh sách cờ đã cắm'],
+                  ['S', 'Cài đặt giao diện'],
+                  ['J', 'Bật / tắt căn đều 2 bên'],
+                  ['+ / −', 'Tăng / giảm cỡ chữ'],
+                  ['?', 'Bảng phím tắt này'],
+                  ['Esc', 'Đóng mọi bảng'],
+                  ['Backspace', 'Về thư viện'],
+                  ['F11', 'Toàn màn hình']
+                ].map(([keys, desc]) => (
+                  <div key={keys} className="shortcut-row">
+                    <span className="shortcut-key">{keys}</span>
+                    <span className="shortcut-desc">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* QUICK ACTION SHEET (nhấn 1 lần vào dòng) */}
+          {selectedPara && (
+            <div className="quick-sheet-backdrop" onClick={() => setSelectedPara(null)}>
+              <div className="quick-sheet" onClick={(e) => e.stopPropagation()}>
+                <div className="quick-sheet-excerpt">{selectedPara.excerpt}…</div>
+                <div className="quick-sheet-actions">
+                  <button className="quick-action" onClick={flagSelectedPara}>
+                    <Flag size={17} fill={selectedPara.bookmarked ? 'currentColor' : 'none'} />
+                    <span>{selectedPara.bookmarked ? 'Bỏ cờ dòng này' : 'Cắm cờ dòng này'}</span>
+                  </button>
+                  <button className="quick-action" onClick={() => { toggleFocusLine(selectedPara.para); setSelectedPara(null); }}>
+                    <Highlighter size={17} />
+                    <span>Ghim sáng dòng</span>
+                  </button>
+                  <button className="quick-action" onClick={copySelectedPara}>
+                    <Copy size={17} />
+                    <span>Sao chép đoạn</span>
+                  </button>
+                </div>
+                <button className="quick-sheet-close" onClick={() => setSelectedPara(null)}>Đóng</button>
+              </div>
+            </div>
+          )}
           <div className={`drawer-overlay ${showBookmarks ? 'open' : ''}`} onClick={() => setShowBookmarks(false)}>
             <div className="drawer" onClick={(e) => e.stopPropagation()}>
               <div className="drawer-header">
