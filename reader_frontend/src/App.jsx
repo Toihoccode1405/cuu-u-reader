@@ -7,7 +7,8 @@ import {
 import {
   getAllBooksFromDB, getBookFromDB, saveBookToDB,
   deleteBookFromDB, updateProgressInDB, parseEpubClient,
-  getAuthConfig, getLastReadSession, saveLastReadSession
+  getAuthConfig, getLastReadSession, saveLastReadSession,
+  loadChapterFromEpubBlob
 } from './storage';
 import AuthModal from './AuthModal';
 
@@ -185,14 +186,14 @@ export default function App() {
         setLoading(false);
       }
     } else {
-      // 100% Client-side with AES-256 Zero-Knowledge encryption
+      // Client-side IndexedDB Blob storage
       try {
         const bookData = await parseEpubClient(file);
-        await saveBookToDB(bookData, cryptoKey);
-        showToast(`Đã mã hóa và lưu thành công: ${bookData.title}`);
+        await saveBookToDB(bookData);
+        showToast(`Đã thêm thành công: ${bookData.title} (${bookData.chapters.length} chương)`);
         await loadBooksFromIndexedDB();
       } catch (e) {
-        showToast(`Lỗi giải nén EPUB: ${e.message}`);
+        alert(`Lỗi khi đọc file EPUB: ${e.message}\n\nVui lòng kiểm tra lại file .epub của bạn.`);
       } finally {
         setLoading(false);
       }
@@ -248,9 +249,9 @@ export default function App() {
       }
     } else {
       try {
-        const bookData = await getBookFromDB(bookId, cryptoKey);
+        const bookData = await getBookFromDB(bookId);
         if (!bookData) throw new Error('Không tìm thấy sách trong bộ nhớ');
-        setCurrentBook({ record: bookData, chapters: bookData.chapters, files: bookData.files });
+        setCurrentBook({ record: bookData, chapters: bookData.chapters, epub_blob: bookData.epub_blob, id: bookData.id, title: bookData.title });
         setChapterIndex(targetChapter);
         setView('reader');
         window.scrollTo({ top: 0, behavior: 'instant' });
@@ -286,37 +287,25 @@ export default function App() {
     }
   };
 
-  // Load Chapter (Client mode)
-  const loadChapterClient = (bookData, idx, restoreScroll = 0) => {
-    const chapters = bookData.chapters;
-    const total = chapters.length;
-    if (idx < 1 || idx > total) return;
+  // Load Chapter (Client mode from Blob)
+  const loadChapterClient = async (bookData, idx, restoreScroll = 0) => {
+    try {
+      const chapterPayload = await loadChapterFromEpubBlob(bookData, idx);
+      setCurrentChapter(chapterPayload);
+      setChapterIndex(idx);
+      window.scrollTo({ top: 0, behavior: 'instant' });
 
-    const chMeta = chapters[idx - 1];
-    const htmlContent = bookData.files[chMeta.href] || '<p>Không có nội dung chương.</p>';
+      if (restoreScroll > 0) {
+        setTimeout(() => {
+          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: maxScroll * (restoreScroll / 100), behavior: 'smooth' });
+        }, 120);
+      }
 
-    const chapterPayload = {
-      book_id: bookData.id,
-      chapter_index: idx,
-      title: chMeta.title,
-      content_html: htmlContent,
-      total_chapters: total,
-      prev_index: idx > 1 ? idx - 1 : null,
-      next_index: idx < total ? idx + 1 : null
-    };
-
-    setCurrentChapter(chapterPayload);
-    setChapterIndex(idx);
-    window.scrollTo({ top: 0, behavior: 'instant' });
-
-    if (restoreScroll > 0) {
-      setTimeout(() => {
-        const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-        window.scrollTo({ top: maxScroll * (restoreScroll / 100), behavior: 'smooth' });
-      }, 120);
+      updateReadingProgress(bookData.id, chapterPayload.title, idx, restoreScroll);
+    } catch (e) {
+      showToast('Lỗi đọc chương: ' + e.message);
     }
-
-    updateReadingProgress(bookData.id, chMeta.title, idx, restoreScroll);
   };
 
   const updateReadingProgress = (bookId, chapterTitle, idx, percent) => {
