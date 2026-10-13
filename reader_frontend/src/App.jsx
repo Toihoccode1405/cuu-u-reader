@@ -48,7 +48,14 @@ export default function App() {
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved);
+        // Legacy theme ids -> ids actually defined in the stylesheet
+        const themeMap = { paper: 'white', dark: 'slate' };
+        if (themeMap[parsed.theme]) parsed.theme = themeMap[parsed.theme];
+        if (parsed.font === 'font-vietnam') parsed.font = 'font-be-vietnam';
+        return parsed;
+      } catch (e) {}
     }
     return {
       theme: 'sepia',
@@ -923,8 +930,8 @@ export default function App() {
                 <label className="settings-label">Màu Nền / Chủ Đề</label>
                 <div className="theme-options">
                   <div
-                    className={`theme-badge theme-paper ${settings.theme === 'paper' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'paper' }))}
+                    className={`theme-badge theme-paper ${settings.theme === 'white' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'white' }))}
                   >
                     Sáng
                   </div>
@@ -935,8 +942,8 @@ export default function App() {
                     Ấm áp
                   </div>
                   <div
-                    className={`theme-badge theme-dark ${settings.theme === 'dark' ? 'active' : ''}`}
-                    onClick={() => setSettings(s => ({ ...s, theme: 'dark' }))}
+                    className={`theme-badge theme-dark ${settings.theme === 'slate' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'slate' }))}
                   >
                     Tối
                   </div>

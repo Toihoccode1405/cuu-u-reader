@@ -225,7 +225,7 @@ export default {
 
       // Save book record
       await env.DB.prepare(
-        'INSERT INTO books (id, user_id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, chapters_json, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO books (id, user_id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, chapters_json, added_at, toc_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         bookId,
         userId,
@@ -236,7 +236,8 @@ export default {
         0,
         hasCover,
         JSON.stringify(metadata.chapters.map(c => ({ index: c.index, title: c.title, href: c.href }))),
-        Date.now()
+        Date.now(),
+        TOC_VERSION
       ).run();
 
       // Save raw EPUB in 60KB chunks to bypass D1 SQL length limits
@@ -316,11 +317,21 @@ export default {
     const matchDetail = path.match(/^\/api\/books\/([^\/]+)$/);
     if (matchDetail && request.method === 'GET') {
       const bookId = matchDetail[1];
-      const record = await env.DB.prepare('SELECT * FROM books WHERE id = ? AND user_id = ?')
+      let record = await env.DB.prepare('SELECT * FROM books WHERE id = ? AND user_id = ?')
         .bind(bookId, userId)
         .first();
 
       if (!record) return errorResponse('Không tìm thấy sách', 404);
+
+      // Self-heal books indexed by an older TOC parser (dropped #anchors -> wrong chapter)
+      if ((record.toc_version || 0) < TOC_VERSION) {
+        const repaired = await reindexBook(env, record);
+        if (repaired) {
+          record = await env.DB.prepare('SELECT * FROM books WHERE id = ? AND user_id = ?')
+            .bind(bookId, userId)
+            .first();
+        }
+      }
 
       const chapters = JSON.parse(record.chapters_json || '[]');
       return jsonResponse({
@@ -388,11 +399,7 @@ export default {
           title = targetCh?.title || `Chương ${chapterIdx}`;
 
           const zip = await JSZip.loadAsync(merged);
-          const chFile = targetCh?.href ? findZipFile(zip, targetCh.href) : null;
-          if (chFile) {
-            const raw = await chFile.async('text');
-            content_html = cleanXhtml(raw);
-          }
+          content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
         }
       }
 
@@ -641,6 +648,163 @@ async function initTables(db) {
 // FULL EPUB EXTRACTOR
 // -----------------------------------------------------------------------------
 
+// EPUBs often pack many chapters into one XHTML file and address each chapter
+// with a fragment anchor (#filepos...). The chapter slice runs from its own
+// anchor to the next chapter anchor inside the same file.
+const TOC_VERSION = 2;
+
+function anchorOffset(html, anchor) {
+  if (!anchor) return -1;
+  let pos = -1;
+  for (const p of [`id="${anchor}"`, `id='${anchor}'`, `name="${anchor}"`, `name='${anchor}'`]) {
+    const i = html.indexOf(p);
+    if (i >= 0 && (pos < 0 || i < pos)) pos = i;
+  }
+  if (pos < 0) return -1;
+  const lt = html.lastIndexOf('<', pos);
+  return lt >= 0 ? lt : pos;
+}
+
+function splitHref(href) {
+  const raw = (href || '').trim();
+  const hashAt = raw.indexOf('#');
+  if (hashAt < 0) return { file: raw.replace(/\\/g, '/'), anchor: '' };
+  return {
+    file: raw.slice(0, hashAt).replace(/\\/g, '/'),
+    anchor: raw.slice(hashAt + 1)
+  };
+}
+
+async function reindexBook(env, record) {
+  try {
+    const { results: chunkRows } = await env.DB.prepare(
+      'SELECT data FROM book_chunks WHERE book_id = ? ORDER BY chunk_index ASC'
+    ).bind(record.id).all();
+
+    if (!chunkRows || chunkRows.length === 0) {
+      await env.DB.prepare('UPDATE books SET toc_version = ? WHERE id = ?').bind(TOC_VERSION, record.id).run();
+      return false;
+    }
+
+    let totalLen = 0;
+    const buffers = chunkRows.map(row => {
+      const bin = atob(row.data);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      totalLen += u8.length;
+      return u8;
+    });
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const b of buffers) {
+      merged.set(b, offset);
+      offset += b.length;
+    }
+
+    const zip = await JSZip.loadAsync(merged);
+    const metadata = await parseEpubMetadataOnly(zip, `${record.title}.epub`);
+    if (!metadata.chapters || metadata.chapters.length === 0) {
+      await env.DB.prepare('UPDATE books SET toc_version = ? WHERE id = ?').bind(TOC_VERSION, record.id).run();
+      return false;
+    }
+
+    // Any chapter content cached by the old parser is invalid now.
+    await env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(record.id).run();
+
+    await env.DB.prepare(
+      'UPDATE books SET chapters_json = ?, total_chapters = ?, toc_version = ? WHERE id = ?'
+    ).bind(
+      JSON.stringify(metadata.chapters.map(c => ({ index: c.index, title: c.title, href: c.href }))),
+      metadata.chapters.length,
+      TOC_VERSION,
+      record.id
+    ).run();
+
+    return true;
+  } catch (e) {
+    console.error('reindexBook failed:', e);
+    return false;
+  }
+}
+
+async function extractChapterContent(zip, toc, chapterIdx, targetCh) {
+  if (!targetCh || !targetCh.href) return '';
+
+  const { file, anchor } = splitHref(targetCh.href);
+  const chFile = findZipFile(zip, file);
+  if (!chFile) return '';
+
+  const raw = await chFile.async('text');
+
+  if (!anchor) {
+    return cleanXhtml(raw);
+  }
+
+  const start = anchorOffset(raw, anchor);
+
+  // Nearest following chapter anchor inside the same file closes this chapter.
+  let end = -1;
+  for (const c of toc) {
+    if (!c || c.index <= chapterIdx) continue;
+    const other = splitHref(c.href);
+    if (other.file !== file || !other.anchor) continue;
+    const off = anchorOffset(raw, other.anchor);
+    if (off > start && (end < 0 || off < end)) end = off;
+  }
+
+  const slice = end > start ? raw.slice(start, end) : (start >= 0 ? raw.slice(start) : raw);
+  return cleanXhtml(slice);
+}
+
+function parseNcxEntries(ncxXml) {
+  const tokens = [];
+  const re = /<(\/?)navPoint\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(ncxXml)) !== null) {
+    tokens.push({ close: m[1] === '/', from: m.index, to: m.index + m[0].length });
+  }
+
+  const entries = [];
+  const stack = [];
+  for (const t of tokens) {
+    if (!t.close) {
+      stack.push({ bodyFrom: t.to });
+      continue;
+    }
+    const node = stack.pop();
+    if (!node) continue;
+
+    const body = ncxXml.slice(node.bodyFrom, t.from);
+
+    const labelMatch = body.match(/<navLabel\b[^>]*>([\s\S]*?)<\/navLabel>/i);
+    let title = '';
+    if (labelMatch) {
+      const textMatch = labelMatch[1].match(/<text\b[^>]*>([\s\S]*?)<\/text>/i);
+      if (textMatch) title = decodeEntities(textMatch[1]).trim();
+    }
+
+    // A navPoint's own <content> always precedes any nested navPoint.
+    const firstNested = body.search(/<navPoint\b/i);
+    const own = firstNested >= 0 ? body.slice(0, firstNested) : body;
+    const srcMatch = own.match(/<content\b[^>]*src\s*=\s*['"]([^'"]+)['"]/i);
+
+    entries.push({ title, src: srcMatch ? srcMatch[1].trim() : null });
+  }
+
+  return entries;
+}
+
+function decodeEntities(s) {
+  return (s || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
 function findZipFile(zip, filename) {
   if (!filename) return null;
   const target = filename.toLowerCase().replace(/\\/g, '/');
@@ -706,7 +870,8 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
     }
   }
 
-  // TOC from NCX
+  // TOC from NCX (depth-aware: pairs each navPoint's own label with its own src,
+  // and keeps the fragment anchor that identifies the chapter inside a file)
   let chapters = [];
   let ncxHref = null;
   for (const [id, href] of Object.entries(manifest)) {
@@ -719,22 +884,16 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
     const ncxFile = findZipFile(zip, opfDir ? `${opfDir}/${ncxHref}` : ncxHref);
     if (ncxFile) {
       const ncxXml = await ncxFile.async('text');
-      const navPointRegex = /<navPoint[\s\S]*?<\/navPoint>/gi;
-      let npMatch, idx = 1;
-      while ((npMatch = navPointRegex.exec(ncxXml)) !== null) {
-        const npXml = npMatch[0];
-        const chTitle = getTagText(npXml, 'text') || `Chương ${idx}`;
-        const srcM = npXml.match(/<content\s+[^>]*src=['"]([^'"]+)['"]/i);
-        if (srcM) {
-          const cleanSrc = srcM[1].split('#')[0].trim();
-          const fullSrc = (opfDir ? `${opfDir}/${cleanSrc}` : cleanSrc).replace(/\\/g, '/');
-          chapters.push({
-            index: idx,
-            title: chTitle,
-            href: fullSrc
-          });
-          idx++;
-        }
+      const entries = parseNcxEntries(ncxXml);
+      const seen = new Set();
+      let idx = 1;
+      for (const e of entries) {
+        if (!e.src) continue;
+        const src = (opfDir ? `${opfDir}/${e.src}` : e.src).replace(/\\/g, '/');
+        if (seen.has(src)) continue;
+        seen.add(src);
+        chapters.push({ index: idx, title: e.title || `Chương ${idx}`, href: src });
+        idx++;
       }
     }
   }
