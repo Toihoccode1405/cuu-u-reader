@@ -46,6 +46,11 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState([]);
   const [activeParaIndex, setActiveParaIndex] = useState(0);
   const [focusParaIndex, setFocusParaIndex] = useState(-1);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [pagedPages, setPagedPages] = useState([]);
+  const [blockHtml, setBlockHtml] = useState([]);
+  const [flipDir, setFlipDir] = useState('');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedPara, setSelectedPara] = useState(null);
 
@@ -61,6 +66,8 @@ export default function App() {
         if (parsed.letterSpacing === undefined) parsed.letterSpacing = 0;
         if (parsed.fontSize === undefined) parsed.fontSize = 19;
         if (parsed.lineHeight === undefined) parsed.lineHeight = 1.8;
+        if (parsed.readMode === undefined) parsed.readMode = 'scroll';
+        if (parsed.allowSelect === undefined) parsed.allowSelect = false;
         return parsed;
       } catch (e) {}
     }
@@ -71,7 +78,9 @@ export default function App() {
       lineHeight: 1.8,
       letterSpacing: 0,
       maxWidth: 820,
-      justify: true
+      justify: true,
+      readMode: 'scroll',
+      allowSelect: false
     };
   });
 
@@ -84,12 +93,27 @@ export default function App() {
   const focusChapterRef = useRef(-1);
   const tapRef = useRef({ para: -1, time: 0 });
   const tapTimerRef = useRef(null);
+  const nextPageRef = useRef(() => {});
+  const prevPageRef = useRef(() => {});
+  const paraToPageRef = useRef(() => {});
+  const pageToParaRef = useRef(() => 0);
+  const flipTimerRef = useRef(null);
+  const settingsRef = useRef({});
   const shortcutsRef = useRef({});
 
   const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
     setTimeout(() => setToast(null), ms);
   }, []);
+
+  // Một đoạn có thể có 2 bản trong DOM: khối gốc ẩn (để đo) và mặt giấy đang xem.
+  // Mọi thao tác tô sáng phải áp cho TẤT CẢ bản để bản đang nhìn thấy cũng đổi màu.
+  const paraEls = useCallback((paraIdx) => {
+    return Array.from(document.querySelectorAll(
+      `#reader-full-content [data-p="${paraIdx}"], .book-page [data-p="${paraIdx}"]`
+    ));
+  }, []);
+
 
   // Sync settings with DOM & localStorage
   useEffect(() => {
@@ -301,7 +325,7 @@ export default function App() {
   // Assigns a stable data-p index to every readable block of the chapter.
   // Same HTML -> same indices on every device, so a saved position maps 1:1.
   const indexParagraphs = useCallback(() => {
-    const container = document.querySelector('.reader-body');
+    const container = document.getElementById('reader-full-content') || document.querySelector('.reader-body');
     if (!container) return [];
 
     const blocks = Array.from(container.querySelectorAll('p, div')).filter(el => {
@@ -319,6 +343,10 @@ export default function App() {
 
   // The block that sits at the top of the viewport right now.
   const getActiveParaIndex = useCallback(() => {
+    // Chế độ lật trang: vị trí đang đọc chính là dòng đầu của trang hiện tại
+    if (settingsRef.current.readMode === 'paged') {
+      return pageToParaRef.current();
+    }
     const container = document.querySelector('.reader-body');
     if (!container) return 0;
 
@@ -336,17 +364,18 @@ export default function App() {
   }, []);
 
   const flashParagraph = (paraIndex, { scroll = true, keepMs = 5000 } = {}) => {
-    const el = document.querySelector(`.reader-body [data-p="${paraIndex}"]`);
-    if (!el) return;
+    const els = paraEls(paraIndex);
+    if (els.length === 0) return;
 
     document.querySelectorAll('.reading-highlight-line').forEach(n => n.classList.remove('reading-highlight-line'));
 
     if (scroll) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const visible = els.find(e => e.closest('.book-page')) || els[0];
+      visible.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    el.classList.add('reading-highlight-line');
-    setTimeout(() => el.classList.remove('reading-highlight-line'), keepMs);
+    els.forEach(el => el.classList.add('reading-highlight-line'));
+    setTimeout(() => els.forEach(el => el.classList.remove('reading-highlight-line')), keepMs);
   };
 
   // Applies persistent flag markers for every bookmark of the open chapter.
@@ -355,10 +384,9 @@ export default function App() {
     (list || [])
       .filter(bm => bm.chapter_index === chapIdx)
       .forEach(bm => {
-        const el = document.querySelector(`.reader-body [data-p="${bm.para_index}"]`);
-        if (el) el.classList.add('bookmarked-para');
+        paraEls(bm.para_index).forEach(el => el.classList.add('bookmarked-para'));
       });
-  }, []);
+  }, [paraEls]);
 
   // Dòng đang được ghim (nhấn 2 lần) - giữ lại qua các lần mở sách.
   // Ghim luôn gắn với ĐÚNG chương đã ghim: sang chương khác thì không sáng nữa,
@@ -367,9 +395,8 @@ export default function App() {
     document.querySelectorAll('.focused-line').forEach(el => el.classList.remove('focused-line'));
     if (paraIdx === null || paraIdx === undefined || paraIdx < 0) return;
     if (focusChapterRef.current !== chapterIndex) return;
-    const el = document.querySelector(`.reader-body [data-p="${paraIdx}"]`);
-    if (el) el.classList.add('focused-line');
-  }, [chapterIndex]);
+    paraEls(paraIdx).forEach(el => el.classList.add('focused-line'));
+  }, [chapterIndex, paraEls]);
 
 
   const isParaBookmarked = useCallback((paraIdx) => {
@@ -471,8 +498,12 @@ export default function App() {
     paintFocus(next);
 
     if (next >= 0) {
-      const el = document.querySelector(`.reader-body [data-p="${target}"]`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (settingsRef.current.readMode === 'paged') {
+        paraToPageRef.current(target);
+      } else {
+        const el = document.querySelector(`.reader-body [data-p="${target}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       showToast('Đã ghim dòng đang đọc');
     } else {
       showToast('Đã bỏ ghim dòng');
@@ -632,7 +663,7 @@ export default function App() {
         window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
       }, 160);
     }
-  }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers, paintFocus]);
+  }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers, paintFocus, settings.readMode]);
 
   // Debounced scroll listener for reading position sync
   useEffect(() => {
@@ -716,7 +747,9 @@ export default function App() {
     const diffY = e.changedTouches[0].screenY - touchStartYRef.current;
     if (Math.abs(diffX) > 70 && Math.abs(diffY) < 50) {
       const bId = currentBook.record ? currentBook.record.id : currentBook.id;
-      if (diffX < 0 && currentChapter?.next_index) {
+      if (settings.readMode === 'paged') {
+        if (diffX < 0) nextPage(); else prevPage();
+      } else if (diffX < 0 && currentChapter?.next_index) {
         loadChapter(bId, currentChapter.next_index);
       } else if (diffX > 0 && currentChapter?.prev_index) {
         loadChapter(bId, currentChapter.prev_index);
@@ -733,6 +766,150 @@ export default function App() {
       setIsFullscreen(false);
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // CHẾ ĐỘ LẬT TRANG: chia nội dung thành từng trang THẬT rồi lật như quyển sách
+  // ---------------------------------------------------------------------------
+  // Mỗi trang là một mặt giấy; ta đo chiều cao thật của từng khối và cắt trang
+  // cho vừa khung, nên không phụ thuộc vào layout cột của trình duyệt.
+  const paginateChapter = useCallback(() => {
+    if (settings.readMode !== 'paged' || view !== 'reader') return;
+    const source = document.getElementById('reader-full-content');
+    const page = document.querySelector('.book-page');
+    if (!source || !page) return;
+
+    // Đo với đúng bề rộng ruột của mặt giấy để chiều cao khớp khi hiển thị
+    const pageStyle = getComputedStyle(page);
+    const innerWidth = page.clientWidth
+      - (parseFloat(pageStyle.paddingLeft) || 0)
+      - (parseFloat(pageStyle.paddingRight) || 0);
+    const available = page.clientHeight
+      - (parseFloat(pageStyle.paddingTop) || 0)
+      - (parseFloat(pageStyle.paddingBottom) || 0)
+      - 18; // chừa chỗ cho số trang
+
+    const prev = source.style.width;
+    source.style.width = `${Math.max(200, innerWidth)}px`;
+    source.style.height = 'auto';
+
+    const blocks = Array.from(source.querySelectorAll('[data-p]'));
+    const htmls = blocks.map(el => el.outerHTML);
+
+    const pages = [];
+    let current = [];
+    let used = 0;
+    blocks.forEach((el, idx) => {
+      const h = el.getBoundingClientRect().height + 10;
+      if (current.length > 0 && used + h > available) {
+        pages.push(current);
+        current = [];
+        used = 0;
+      }
+      current.push(idx);
+      used += h;
+    });
+    if (current.length > 0) pages.push(current);
+    if (pages.length === 0) pages.push([]);
+
+    source.style.width = prev;
+    setBlockHtml(htmls);
+    setPagedPages(pages);
+    setPageCount(pages.length);
+    setPageIndex(i => Math.min(Math.max(1, i), pages.length));
+  }, [settings.readMode, view]);
+
+  const goToPage = useCallback((page, smooth = true) => {
+    const clamped = Math.min(Math.max(1, page), Math.max(1, pagedPages.length || 1));
+    const prevPage = pageIndex;
+    setPageIndex(clamped);
+    if (smooth && clamped !== prevPage) {
+      setFlipDir(clamped > prevPage ? 'next' : 'prev');
+      clearTimeout(flipTimerRef.current);
+      flipTimerRef.current = setTimeout(() => setFlipDir(''), 440);
+    }
+  }, [pagedPages.length, pageIndex]);
+
+  // Vị trí đang đọc -> số trang chứa dòng đó
+  const paraToPage = useCallback((paraIdx) => {
+    for (let i = 0; i < pagedPages.length; i++) {
+      if (pagedPages[i].includes(paraIdx)) return i + 1;
+    }
+    return 1;
+  }, [pagedPages]);
+
+  // Trang hiện tại -> dòng đầu tiên của trang (để lưu tiến độ)
+  const pageToPara = useCallback(() => {
+    const page = pagedPages[pageIndex - 1];
+    if (!page || page.length === 0) return 0;
+    const firstIdx = page[0];
+    const el = document.getElementById('reader-full-content')?.querySelectorAll('[data-p]')[firstIdx];
+    return el ? (parseInt(el.getAttribute('data-p'), 10) || 0) : 0;
+  }, [pagedPages, pageIndex]);
+
+  // Dựng lại phân trang khi đổi chế độ / cỡ chữ / khổ trang / xoay màn hình
+  useEffect(() => {
+    if (view !== 'reader' || settings.readMode !== 'paged') return;
+    const t1 = setTimeout(() => paginateChapter(), 80);
+    const t2 = setTimeout(() => paginateChapter(), 500);
+    const onResize = () => paginateChapter();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [view, settings.readMode, settings.fontSize, settings.lineHeight, settings.letterSpacing, settings.maxWidth, settings.font, currentChapter, chapterIndex, paginateChapter]);
+
+  // Mở đúng trang khi chuyển sang chế độ lật / mở chương mới
+  const pagedInitRef = useRef('');
+  useEffect(() => {
+    if (view !== 'reader' || settings.readMode !== 'paged') return;
+    const key = `${chapterIndex}:${settings.fontSize}:${settings.lineHeight}:${settings.letterSpacing}:${settings.maxWidth}:${settings.font}`;
+    if (pagedInitRef.current === key) return;
+    pagedInitRef.current = key;
+    const t = setTimeout(() => {
+      paginateChapter();
+      const target = focusChapterRef.current === chapterIndex && focusParaRef.current >= 0
+        ? focusParaRef.current
+        : activeParaIndex;
+      setPageIndex(Math.max(1, paraToPage(target)));
+    }, 620);
+    return () => clearTimeout(t);
+  }, [view, settings.readMode, currentChapter, chapterIndex, settings.fontSize, settings.lineHeight, settings.letterSpacing, settings.maxWidth, settings.font, paginateChapter, paraToPage, activeParaIndex]);
+
+  const nextPage = useCallback(() => {
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (pageIndex < pagedPages.length) {
+      goToPage(pageIndex + 1);
+    } else if (currentChapter?.next_index && bookId) {
+      loadChapter(bookId, currentChapter.next_index);
+    }
+  }, [pageIndex, pagedPages.length, goToPage, currentChapter, currentBook]);
+
+  const prevPage = useCallback(() => {
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (pageIndex > 1) {
+      goToPage(pageIndex - 1);
+    } else if (currentChapter?.prev_index && bookId) {
+      loadChapter(bookId, currentChapter.prev_index);
+    }
+  }, [pageIndex, goToPage, currentChapter, currentBook]);
+
+  const isPaged = settings.readMode === 'paged';
+  nextPageRef.current = nextPage;
+  prevPageRef.current = prevPage;
+  settingsRef.current = settings;
+  paraToPageRef.current = (paraIdx) => goToPage(paraToPage(paraIdx));
+  pageToParaRef.current = pageToPara;
+
+  const pageHtml = (() => {
+    if (!isPaged) return '';
+    const page = pagedPages[pageIndex - 1];
+    if (!page || page.length === 0) return '';
+    return page.map(i => blockHtml[i] || '').join('');
+  })();
 
   // ---------------------------------------------------------------------------
   // KEYBOARD SHORTCUTS (chỉ hoạt động khi đang đọc)
@@ -782,9 +959,9 @@ export default function App() {
 
       if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') {
         if (k === ' ') { e.preventDefault(); }
-        s.nextChapter();
+        if (settings.readMode === 'paged') { nextPageRef.current(); } else { s.nextChapter(); }
       } else if (k === 'ArrowLeft' || k === 'PageUp') {
-        s.prevChapter();
+        if (settings.readMode === 'paged') { prevPageRef.current(); } else { s.prevChapter(); }
       } else if (k === 'f' || k === 'F') {
         s.flag();
       } else if (k === 'h' || k === 'H') {
@@ -1100,17 +1277,92 @@ export default function App() {
           </header>
 
           <main className="reader-content-box">
-            <div className="xh-title-row" aria-hidden="true">
-              <span className="xh-rule" />
-              <XhIcon name="sword" />
-              <span className="xh-rule right" />
-            </div>
-            <h1 className="chapter-header-title">{currentChapter.title}</h1>
-            <div
-              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
-              onClick={handleReaderTap}
-              dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
-            />
+            {!isPaged && (
+              <>
+                <div className="xh-title-row" aria-hidden="true">
+                  <span className="xh-rule" />
+                  <XhIcon name="sword" />
+                  <span className="xh-rule right" />
+                </div>
+                <h1 className="chapter-header-title">{currentChapter.title}</h1>
+              </>
+            )}
+
+            {isPaged ? (
+              <>
+                {/* Nội dung gốc (ẩn) để đánh số đoạn và đo chiều cao từng đoạn */}
+                <div className="paged-measure" aria-hidden="true">
+                  <div
+                    id="reader-full-content"
+                    className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'}`}
+                    dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
+                  />
+                </div>
+
+                <div className="reader-page-viewport">
+                  <div className={`book-page ${flipDir ? `flip-${flipDir}` : ''}`}>
+                    <div className={`reader-body book-page-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.allowSelect ? 'selectable' : ''}`}>
+                      {pageIndex === 1 && (
+                        <div className="chapter-title-block">
+                          <div className="xh-title-row" aria-hidden="true">
+                            <XhIcon name="sword" />
+                          </div>
+                          <h1 className="chapter-header-title">{currentChapter.title}</h1>
+                        </div>
+                      )}
+                      <div
+                        className="page-content"
+                        onClick={handleReaderTap}
+                        dangerouslySetInnerHTML={{ __html: pageHtml }}
+                      />
+                    </div>
+                    <div className="book-page-number">{pageIndex} / {pageCount}</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div
+                className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.allowSelect ? 'selectable' : ''}`}
+                onClick={handleReaderTap}
+                dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
+              />
+            )}
+
+            {isPaged && (
+              <div className="page-nav-bar">
+                <button
+                  className="btn btn-secondary"
+                  onClick={prevPage}
+                  disabled={pageIndex <= 1 && !currentChapter.prev_index}
+                >
+                  <ArrowLeft size={16} />
+                  <span className="hide-on-mobile">Trang trước</span>
+                </button>
+
+                <div className="page-dots">
+                  {Array.from({ length: Math.min(pageCount, 12) }).map((_, i) => {
+                    const dotPage = pageCount <= 12 ? i + 1 : Math.round(((i + 1) / 12) * pageCount);
+                    const isActive = pageCount <= 12
+                      ? dotPage === pageIndex
+                      : Math.abs(dotPage - pageIndex) <= Math.ceil(pageCount / 24);
+                    return <span key={i} className={`page-dot ${isActive ? 'active' : ''}`} />;
+                  })}
+                </div>
+
+                <span className="page-counter">
+                  Trang {pageIndex}/{pageCount}
+                </span>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={nextPage}
+                  disabled={pageIndex >= pageCount && !currentChapter.next_index}
+                >
+                  <span className="hide-on-mobile">Trang sau</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
 
             <div className="nav-bottom-bar">
               <button
@@ -1342,6 +1594,38 @@ export default function App() {
                   </button>
                 </div>
 
+                <label className="settings-label">Chế Độ Đọc</label>
+                <div className="toggle-row">
+                  <button
+                    className={`setting-toggle ${settings.readMode === 'scroll' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, readMode: 'scroll' }))}
+                  >
+                    Cuộn Dọc
+                  </button>
+                  <button
+                    className={`setting-toggle ${settings.readMode === 'paged' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, readMode: 'paged' }))}
+                  >
+                    Lật Trang
+                  </button>
+                </div>
+
+                <label className="settings-label">Bôi Đen Chữ</label>
+                <div className="toggle-row">
+                  <button
+                    className={`setting-toggle ${!settings.allowSelect ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, allowSelect: false }))}
+                  >
+                    Tắt (nhấn 2 lần để ghim)
+                  </button>
+                  <button
+                    className={`setting-toggle ${settings.allowSelect ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, allowSelect: true }))}
+                  >
+                    Cho phép bôi đen
+                  </button>
+                </div>
+
                 <label className="settings-label">Căn Lề Chữ</label>
                 <div className="toggle-row">
                   <button
@@ -1368,7 +1652,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true })}
+                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true, readMode: 'scroll', allowSelect: false })}
                 >
                   Khôi Phục Mặc Định
                 </button>
@@ -1397,13 +1681,13 @@ export default function App() {
                 </div>
                 <div className="shortcut-row">
                   <span className="shortcut-desc">Vuốt ngang</span>
-                  <span className="shortcut-key">Chương trước / sau</span>
+                  <span className="shortcut-key">Chương trước / sau · Lật trang</span>
                 </div>
 
                 <label className="settings-label">Bàn phím khi đang đọc</label>
                 {[
-                  ['→ / PageDown / Space', 'Chương tiếp theo'],
-                  ['← / PageUp', 'Chương trước'],
+                  ['→ / PageDown / Space', 'Chương sau (chế độ Cuộn) · Trang sau (chế độ Lật trang)'],
+                  ['← / PageUp', 'Chương trước · Trang trước'],
                   ['F', 'Cắm / bỏ cờ ở dòng đang đọc'],
                   ['H', 'Ghim sáng dòng đang đọc'],
                   ['C', 'Mở mục lục chương'],
