@@ -1,0 +1,15 @@
+[package]
+name = "reader_backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+quick-xml = "0.37"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+parking_lot = "0.12"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

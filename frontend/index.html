@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="sepia">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Cửu U Thư Các - Trình Đọc Sách Hiện Đại</title>
+  
+  <!-- Google Fonts: 6 font chữ tuyển chọn cho đọc sách -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- 1. GIAO DIỆN TỦ SÁCH (LIBRARY VIEW) -->
+  <!-- ========================================================================= -->
+  <div id="library-view" class="view-active">
+    <header class="app-header">
+      <div class="header-container">
+        <div class="brand">
+          <span class="brand-icon">📚</span>
+          <span class="brand-name">Cửu U Thư Các</span>
+        </div>
+        <div class="search-box">
+          <input type="text" id="search-input" placeholder="Tìm kiếm sách, tác giả...">
+        </div>
+        <div class="header-actions">
+          <label for="epub-upload-input" class="btn btn-primary" title="Tải sách EPUB lên">
+            <span class="icon">＋</span> Thêm Sách (EPUB)
+          </label>
+          <input type="file" id="epub-upload-input" accept=".epub" style="display: none;">
+        </div>
+      </div>
+    </header>
+
+    <main class="library-container">
+      <div id="drop-zone" class="drop-zone">
+        <div class="drop-content">
+          <div class="drop-icon">📥</div>
+          <h3>Kéo & thả file EPUB vào đây</h3>
+          <p>hoặc bấm nút "Thêm Sách" ở góc trên</p>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <h2>Tủ Sách Của Bạn <span id="book-count" class="badge">0</span></h2>
+      </div>
+
+      <div id="books-grid" class="books-grid">
+        <!-- Rendered by JavaScript -->
+      </div>
+
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <div class="empty-icon">📖</div>
+        <h3>Tủ sách chưa có truyện nào</h3>
+        <p>Hãy tải lên file EPUB đầu tiên của bạn để bắt đầu đọc!</p>
+        <button class="btn btn-primary" onclick="document.getElementById('epub-upload-input').click()">
+          Tải lên sách ngay
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 2. GIAO DIỆN ĐỌC SÁCH (READER VIEW) -->
+  <!-- ========================================================================= -->
+  <div id="reader-view" class="view-hidden">
+    <!-- Thanh điều hướng trên -->
+    <header id="reader-header" class="reader-header">
+      <div class="reader-nav-left">
+        <button id="btn-back-library" class="nav-btn" title="Quay lại Tủ sách">
+          <span>←</span> <span class="nav-label">Tủ sách</span>
+        </button>
+      </div>
+      <div class="reader-header-title" id="reader-current-title">
+        Đang tải...
+      </div>
+      <div class="reader-nav-right">
+        <button id="btn-toggle-toc" class="nav-btn" title="Mục lục">
+          <span>📑</span> <span class="nav-label">Mục lục</span>
+        </button>
+        <button id="btn-toggle-settings" class="nav-btn" title="Cài đặt hiển thị (Phông chữ / Màu sắc)">
+          <span>Aa</span>
+        </button>
+        <button id="btn-fullscreen" class="nav-btn" title="Toàn màn hình">
+          <span>⛶</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Khung nội dung truyện -->
+    <main id="reader-body" class="reader-body">
+      <div id="reading-content" class="reading-content font-literata">
+        <!-- Chapter HTML rendered here -->
+      </div>
+
+      <!-- Điều hướng chương dưới cùng -->
+      <nav class="reader-footer-nav">
+        <button id="btn-prev-chapter" class="btn btn-secondary">
+          ← Chương trước
+        </button>
+        <div class="chapter-progress-text" id="chapter-progress-indicator">
+          Chương 1 / 1
+        </div>
+        <button id="btn-next-chapter" class="btn btn-primary">
+          Chương sau →
+        </button>
+      </nav>
+    </main>
+
+    <!-- Thanh tiến độ cuộn trang (Progress Bar) -->
+    <div id="scroll-progress-bar" class="scroll-progress-bar"></div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3. DRAWER MỤC LỤC (TABLE OF CONTENTS) -->
+  <!-- ========================================================================= -->
+  <aside id="toc-drawer" class="drawer drawer-left">
+    <div class="drawer-header">
+      <h3>Mục Lục Chương</h3>
+      <button id="btn-close-toc" class="close-btn">&times;</button>
+    </div>
+    <div class="toc-search-box">
+      <input type="text" id="toc-search-input" placeholder="Tìm tên hoặc số chương...">
+    </div>
+    <ul id="toc-list" class="toc-list">
+      <!-- Rendered by JavaScript -->
+    </ul>
+  </aside>
+
+  <!-- ========================================================================= -->
+  <!-- 4. MODAL CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY & THEMES) -->
+  <!-- ========================================================================= -->
+  <aside id="settings-drawer" class="drawer drawer-right">
+    <div class="drawer-header">
+      <h3>Cài Đặt Hiển Thị</h3>
+      <button id="btn-close-settings" class="close-btn">&times;</button>
+    </div>
+    <div class="settings-content">
+      
+      <!-- Giao diện màu (Themes) -->
+      <div class="setting-group">
+        <label class="setting-label">Giao diện đọc</label>
+        <div class="theme-picker">
+          <button class="theme-btn theme-white" data-theme="white" title="Trắng tinh khôi">Sáng</button>
+          <button class="theme-btn theme-sepia active" data-theme="sepia" title="Hoài cổ (Dịu mắt)">Ấm</button>
+          <button class="theme-btn theme-slate" data-theme="slate" title="Xám đen ban đêm">Tối</button>
+          <button class="theme-btn theme-oled" data-theme="oled" title="OLED Đen tuyệt đối">OLED</button>
+        </div>
+      </div>
+
+      <!-- Phông chữ (Fonts) -->
+      <div class="setting-group">
+        <label class="setting-label">Phông chữ</label>
+        <div class="font-picker">
+          <button class="font-btn active" data-font="font-literata" style="font-family: 'Literata', serif;">Literata</button>
+          <button class="font-btn" data-font="font-merriweather" style="font-family: 'Merriweather', serif;">Merriweather</button>
+          <button class="font-btn" data-font="font-lora" style="font-family: 'Lora', serif;">Lora</button>
+          <button class="font-btn" data-font="font-vietnam" style="font-family: 'Be Vietnam Pro', sans-serif;">Vietnam Pro</button>
+          <button class="font-btn" data-font="font-inter" style="font-family: 'Inter', sans-serif;">Inter</button>
+          <button class="font-btn" data-font="font-playfair" style="font-family: 'Playfair Display', serif;">Playfair</button>
+        </div>
+      </div>
+
+      <!-- Cỡ chữ (Font Size) -->
+      <div class="setting-group">
+        <div class="slider-header">
+          <label class="setting-label">Cỡ chữ</label>
+          <span id="font-size-val">19px</span>
+        </div>
+        <div class="range-controls">
+          <button class="step-btn" id="btn-font-dec">A-</button>
+          <input type="range" id="slider-font-size" min="14" max="32" value="19" step="1">
+          <button class="step-btn" id="btn-font-inc">A+</button>
+        </div>
+      </div>
+
+      <!-- Giãn dòng (Line Height) -->
+      <div class="setting-group">
+        <div class="slider-header">
+          <label class="setting-label">Giãn dòng</label>
+          <span id="line-height-val">1.75</span>
+        </div>
+        <input type="range" id="slider-line-height" min="1.4" max="2.4" value="1.75" step="0.05">
+      </div>
+
+      <!-- Độ rộng trang (Max Width) -->
+      <div class="setting-group">
+        <div class="slider-header">
+          <label class="setting-label">Độ rộng trang</label>
+          <span id="max-width-val">820px</span>
+        </div>
+        <input type="range" id="slider-max-width" min="600" max="1100" value="820" step="20">
+      </div>
+
+      <!-- Căn lề văn bản -->
+      <div class="setting-group">
+        <label class="setting-label">Căn lề</label>
+        <div class="align-picker">
+          <button class="align-btn active" data-align="justify">Căn đều 2 bên</button>
+          <button class="align-btn" data-align="left">Căn trái</button>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- Backdrop phủ mờ khi mở Drawer -->
+  <div id="modal-backdrop" class="modal-backdrop"></div>
+
+  <!-- Loading Toast Overlay -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+[target.x86_64-pc-windows-gnu]
+linker = "D:/Dev/Mod/Truyen_/Truyen_Chu/w64devkit/bin/gcc.exe"
+ar = "D:/Dev/Mod/Truyen_/Truyen_Chu/w64devkit/bin/ar.exe"

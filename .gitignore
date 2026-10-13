@@ -1,0 +1,22 @@
+# Audio directories (Large GB files)
+audio_tien_nghich/
+audio_cau_ma/
+
+# Compilers & Build Tools
+w64devkit/
+*.exe
+*.pdb
+
+# Rust
+reader_backend/target/
+reader_backend/data/
+
+# Node
+reader_frontend/node_modules/
+node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.omp/
+*.tmp
