@@ -731,7 +731,13 @@ export default function App() {
     if (view !== 'reader') return;
     const diffX = e.changedTouches[0].screenX - touchStartXRef.current;
     const diffY = e.changedTouches[0].screenY - touchStartYRef.current;
-    if (Math.abs(diffX) > 70 && Math.abs(diffY) < 50) {
+    const absX = Math.abs(diffX);
+    const absY = Math.abs(diffY);
+    // Phải là vuốt NGANG rõ ràng: đủ xa VÀ ngang phải trội hơn dọc ít nhất gấp
+    // đôi. Trước đây chỉ cần |X| > 70 và |Y| < 50 nên một cú vuốt hơi chéo
+    // (ngang 80, dọc 45) vẫn bị tính là chuyển chương - rất dễ nhảy chương
+    // ngoài ý muốn khi đang cuộn dọc.
+    if (absX > 70 && absX > absY * 2) {
       const bId = currentBook.record ? currentBook.record.id : currentBook.id;
       if (diffX < 0 && currentChapter?.next_index) {
         loadChapter(bId, currentChapter.next_index);
@@ -1073,9 +1079,9 @@ export default function App() {
                 <span className="brand-seal" style={{ width: 24, height: 24, marginRight: 8 }}>
                   <XhIcon name="sword" />
                 </span>
-                <strong>{currentBook.record ? currentBook.record.title : currentBook.title}</strong>
-                <span className="hide-on-mobile" style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
-                <span className="hide-on-mobile" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
+                <strong className="header-book-title">{currentBook.record ? currentBook.record.title : currentBook.title}</strong>
+                <span className="header-sep hide-on-mobile" style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
+                <span className="header-chapter-title" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
               </div>
 
               <div style={{ display: 'flex', gap: 6 }}>
