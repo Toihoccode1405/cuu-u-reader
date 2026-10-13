@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS books (
   para_index INTEGER DEFAULT 0,
   has_cover INTEGER DEFAULT 0,
   chapters_json TEXT NOT NULL,
-  added_at INTEGER NOT NULL
+  added_at INTEGER NOT NULL,
+  toc_version INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS covers (
