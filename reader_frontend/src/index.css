@@ -930,9 +930,10 @@ body {
 }
 
 .reader-content-box {
+  --page-pad: 1.5rem;
   max-width: var(--reader-max-width, var(--max-content-width));
   margin: 0 auto;
-  padding: calc(var(--header-height, 56px) + 2.5rem) 1.5rem 5rem 1.5rem;
+  padding: calc(var(--header-height, 56px) + 2.5rem) var(--page-pad) 5rem var(--page-pad);
   font-size: var(--reader-font-size);
   line-height: var(--reader-line-height);
   transition: font-size 0.2s ease, line-height 0.2s ease, max-width 0.2s ease;
@@ -1422,7 +1423,8 @@ input[type="range"] {
     gap: 1rem;
   }
   .reader-content-box {
-    padding: calc(var(--header-height, 52px) + 2rem) 1rem 4rem 1rem;
+    --page-pad: 1rem;
+    padding: calc(var(--header-height, 52px) + 2rem) var(--page-pad) 4rem var(--page-pad);
   }
   .reader-title-truncate {
     max-width: 40%;
@@ -1453,7 +1455,8 @@ input[type="range"] {
     gap: 1.25rem;
   }
   .reader-content-box {
-    padding: calc(var(--header-height, 56px) + 2.5rem) 2rem 5rem 2rem;
+    --page-pad: 2rem;
+    padding: calc(var(--header-height, 56px) + 2.5rem) var(--page-pad) 5rem var(--page-pad);
   }
 }
 
@@ -1826,6 +1829,13 @@ input[type="range"] {
   scroll-margin-top: calc(var(--header-height, 56px) + 1.5rem);
   border-radius: 6px;
   transition: background-color 0.35s ease, box-shadow 0.35s ease;
+  /* Nới hộp đoạn ra hết phần lề trang để dải sáng trải trọn bề rộng vùng đọc,
+     rồi bù lại đúng bằng padding -> bề rộng RUỘT CHỮ không đổi một pixel,
+     nên không có reflow, chữ không xê dịch. */
+  margin-left: calc(-1 * var(--page-pad, 16px));
+  margin-right: calc(-1 * var(--page-pad, 16px));
+  padding-left: var(--page-pad, 16px);
+  padding-right: var(--page-pad, 16px);
 }
 /* LƯU Ý: mọi điểm nhấn (ghim / cờ / tô sáng) TUYỆT ĐỐI không được dùng
    padding, border hay margin - chúng làm đổi chiều cao và bề rộng thật của
@@ -1848,13 +1858,13 @@ input[type="range"] {
 .reader-body [data-p].focused-line { --hl: var(--accent-light, rgba(201, 162, 39, 0.18)); }
 .reader-body [data-p].reading-highlight-line { --hl: rgba(194, 89, 30, 0.22); }
 
-/* Vạch màu bên trái: nằm sâu trong lề nên không còn dính vào chữ */
+/* Vạch màu bên trái: nằm trong lề (cách chữ đúng bằng lề trang) nên không đè lên chữ */
 .reader-body [data-p].reading-highlight-line::before,
 .reader-body [data-p].focused-line::before,
 .reader-body [data-p].bookmarked-para::before {
   content: '';
   position: absolute;
-  left: -11px;
+  left: 0;
   top: 0.12em;
   bottom: 0.12em;
   width: 3px;
@@ -1873,7 +1883,7 @@ input[type="range"] {
 .reader-body [data-p].bookmarked-para::after {
   content: '⚑';
   position: absolute;
-  right: -11px;
+  right: 2px;
   top: 0.1em;
   color: var(--accent-color);
   font-weight: 700;
