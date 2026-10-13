@@ -1,17 +1,26 @@
 import JSZip from 'jszip';
+import { encryptText, decryptText } from './crypto';
 
 const DB_NAME = 'CuuUReaderDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'books';
+const DB_VERSION = 2;
+const STORE_BOOKS = 'books';
+const STORE_AUTH = 'auth';
+const STORE_META = 'meta';
 
-// Initialize IndexedDB
+// Initialize IndexedDB with multi-store support
 export function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_BOOKS)) {
+        db.createObjectStore(STORE_BOOKS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_AUTH)) {
+        db.createObjectStore(STORE_AUTH, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_META)) {
+        db.createObjectStore(STORE_META, { keyPath: 'id' });
       }
     };
     request.onsuccess = (e) => resolve(e.target.result);
@@ -19,15 +28,78 @@ export function openDB() {
   });
 }
 
-// Get all books
+// -----------------------------------------------------------------------------
+// AUTH & MASTER PASSCODE STORAGE
+// -----------------------------------------------------------------------------
+
+export async function getAuthConfig() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_AUTH, 'readonly');
+    const store = tx.objectStore(STORE_AUTH);
+    const req = store.get('master_auth');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function saveAuthConfig(saltBase64, verifierBase64) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_AUTH, 'readwrite');
+    const store = tx.objectStore(STORE_AUTH);
+    const req = store.put({
+      id: 'master_auth',
+      salt: saltBase64,
+      verifier: verifierBase64,
+      created_at: Date.now()
+    });
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// -----------------------------------------------------------------------------
+// LAST READ PROGRESS TRACKING (TIẾP TỤC ĐỌC GẦN NHẤT)
+// -----------------------------------------------------------------------------
+
+export async function getLastReadSession() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readonly');
+    const store = tx.objectStore(STORE_META);
+    const req = store.get('last_read');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function saveLastReadSession(data) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readwrite');
+    const store = tx.objectStore(STORE_META);
+    const req = store.put({
+      id: 'last_read',
+      ...data,
+      updated_at: Date.now()
+    });
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// -----------------------------------------------------------------------------
+// BOOK STORAGE WITH ZERO-KNOWLEDGE ENCRYPTION
+// -----------------------------------------------------------------------------
+
 export async function getAllBooksFromDB() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(STORE_BOOKS, 'readonly');
+    const store = tx.objectStore(STORE_BOOKS);
     const req = store.getAll();
     req.onsuccess = () => {
-      // Return metadata only (exclude heavy chapter file contents for list view)
       const list = (req.result || []).map(b => ({
         id: b.id,
         title: b.title,
@@ -37,6 +109,7 @@ export async function getAllBooksFromDB() {
         scroll_percent: b.scroll_percent || 0,
         has_cover: !!b.cover_data,
         cover_url: b.cover_data || null,
+        is_encrypted: !!b.is_encrypted,
         added_at: b.added_at
       }));
       resolve(list);
@@ -45,57 +118,95 @@ export async function getAllBooksFromDB() {
   });
 }
 
-// Get single book with all chapters & files
-export async function getBookFromDB(id) {
+export async function getBookFromDB(id, cryptoKey = null) {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
+  const book = await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_BOOKS, 'readonly');
+    const store = tx.objectStore(STORE_BOOKS);
     const req = store.get(id);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+
+  if (!book) return null;
+
+  // If book files are encrypted, decrypt them with cryptoKey
+  if (book.is_encrypted && cryptoKey && book.encrypted_files) {
+    const decryptedFiles = {};
+    for (const [href, encPayload] of Object.entries(book.encrypted_files)) {
+      try {
+        decryptedFiles[href] = await decryptText(encPayload, cryptoKey);
+      } catch (e) {
+        decryptedFiles[href] = '<p style="color:red">Lỗi giải mã chương. Mật khẩu không đúng.</p>';
+      }
+    }
+    book.files = decryptedFiles;
+  }
+
+  return book;
 }
 
-// Save book to IndexedDB
-export async function saveBookToDB(book) {
+export async function saveBookToDB(book, cryptoKey = null) {
   const db = await openDB();
+
+  // If cryptoKey is provided, encrypt every chapter before saving to IndexedDB
+  const bookToSave = { ...book };
+  if (cryptoKey && book.files) {
+    const encryptedFiles = {};
+    for (const [href, plainHtml] of Object.entries(book.files)) {
+      encryptedFiles[href] = await encryptText(plainHtml, cryptoKey);
+    }
+    bookToSave.encrypted_files = encryptedFiles;
+    bookToSave.is_encrypted = true;
+    delete bookToSave.files; // Do not store plaintext in IndexedDB!
+  }
+
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.put(book);
+    const tx = db.transaction(STORE_BOOKS, 'readwrite');
+    const store = tx.objectStore(STORE_BOOKS);
+    const req = store.put(bookToSave);
     req.onsuccess = () => resolve(book);
     req.onerror = () => reject(req.error);
   });
 }
 
-// Delete book
 export async function deleteBookFromDB(id) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(STORE_BOOKS, 'readwrite');
+    const store = tx.objectStore(STORE_BOOKS);
     const req = store.delete(id);
     req.onsuccess = () => resolve(true);
     req.onerror = () => reject(req.error);
   });
 }
 
-// Update reading progress
 export async function updateProgressInDB(id, chapterIndex, scrollPercent) {
   const db = await openDB();
-  const book = await getBookFromDB(id);
-  if (!book) return;
-  book.current_chapter = chapterIndex;
-  book.scroll_percent = scrollPercent;
-  await saveBookToDB(book);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_BOOKS, 'readwrite');
+    const store = tx.objectStore(STORE_BOOKS);
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const book = req.result;
+      if (book) {
+        book.current_chapter = chapterIndex;
+        book.scroll_percent = scrollPercent;
+        store.put(book);
+      }
+      resolve(true);
+    };
+    req.onerror = () => reject(req.error);
+  });
 }
 
-// Pure Client-side EPUB Parser (Runs 100% in browser on phone/PC without backend)
+// -----------------------------------------------------------------------------
+// CLIENT-SIDE EPUB PARSER
+// -----------------------------------------------------------------------------
+
 export async function parseEpubClient(file) {
   const zip = await JSZip.loadAsync(file);
 
-  // 1. Read META-INF/container.xml
   const containerXmlStr = await zip.file('META-INF/container.xml')?.async('text');
   if (!containerXmlStr) throw new Error('File không hợp lệ: Thiếu META-INF/container.xml');
 
@@ -107,7 +218,6 @@ export async function parseEpubClient(file) {
 
   const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
 
-  // 2. Read OPF
   const opfXmlStr = await zip.file(opfPath)?.async('text');
   if (!opfXmlStr) throw new Error('Không tìm thấy file ' + opfPath);
 
@@ -115,13 +225,11 @@ export async function parseEpubClient(file) {
   const title = opfDoc.querySelector('title')?.textContent || file.name.replace(/\.epub$/i, '');
   const author = opfDoc.querySelector('creator')?.textContent || 'Khuyết danh';
 
-  // Build manifest
   const manifest = {};
   opfDoc.querySelectorAll('manifest item').forEach(item => {
     manifest[item.getAttribute('id')] = item.getAttribute('href');
   });
 
-  // Extract cover
   let coverData = null;
   const coverMeta = opfDoc.querySelector('meta[name="cover"]');
   let coverHref = null;
@@ -129,7 +237,6 @@ export async function parseEpubClient(file) {
     coverHref = manifest[coverMeta.getAttribute('content')];
   }
   if (!coverHref) {
-    // Try finding item with id or href containing 'cover'
     const coverItem = Object.entries(manifest).find(([id, href]) => 
       id.toLowerCase().includes('cover') && /\.(jpg|jpeg|png|webp)$/i.test(href)
     );
@@ -146,7 +253,6 @@ export async function parseEpubClient(file) {
     }
   }
 
-  // 3. Parse TOC
   let chapters = [];
   const ncxItem = Object.entries(manifest).find(([id, href]) => href.toLowerCase().endsWith('.ncx'));
   if (ncxItem) {
@@ -169,7 +275,6 @@ export async function parseEpubClient(file) {
     }
   }
 
-  // Fallback: spine order
   if (chapters.length === 0) {
     const itemrefs = opfDoc.querySelectorAll('spine itemref');
     itemrefs.forEach((ref, i) => {
@@ -185,7 +290,6 @@ export async function parseEpubClient(file) {
     });
   }
 
-  // 4. Preload and clean all chapter HTML files into a map
   const files = {};
   for (const ch of chapters) {
     const f = zip.file(ch.href);

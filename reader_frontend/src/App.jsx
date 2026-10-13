@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
-  List, Sliders, Maximize, Minimize, X, UploadCloud, Cloud, HardDrive
+  List, Sliders, Maximize, Minimize, X, UploadCloud, Cloud,
+  HardDrive, Lock, Unlock, PlayCircle, ShieldCheck
 } from 'lucide-react';
 import {
   getAllBooksFromDB, getBookFromDB, saveBookToDB,
-  deleteBookFromDB, updateProgressInDB, parseEpubClient
+  deleteBookFromDB, updateProgressInDB, parseEpubClient,
+  getAuthConfig, getLastReadSession, saveLastReadSession
 } from './storage';
+import AuthModal from './AuthModal';
 
 const API_BASE = '';
 
@@ -18,6 +21,15 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [isServerMode, setIsServerMode] = useState(false);
 
+  // Security & Vault Lock State
+  const [authConfig, setAuthConfig] = useState(null);
+  const [cryptoKey, setCryptoKey] = useState(null);
+  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Last Read Session (Tiếp tục đọc gần nhất)
+  const [lastReadSession, setLastReadSession] = useState(null);
+
   // Active Reading State
   const [currentBook, setCurrentBook] = useState(null);
   const [currentChapter, setCurrentChapter] = useState(null);
@@ -25,13 +37,12 @@ export default function App() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [headerVisible, setHeaderVisible] = useState(true);
 
-  // Drawers
+  // Drawers & Settings
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [tocSearch, setTocSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Typography Settings
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
     if (saved) {
@@ -56,7 +67,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   }, []);
 
-  // Sync settings with DOM & localStorage
+  // Sync settings
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
@@ -65,25 +76,58 @@ export default function App() {
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Check backend server on load
+  // Init App on start
   useEffect(() => {
     initApp();
   }, []);
 
   const initApp = async () => {
+    // 1. Check Auth config
+    try {
+      const cfg = await getAuthConfig();
+      setAuthConfig(cfg);
+
+      if (cfg) {
+        // Vault is protected
+        const isSessionUnlocked = sessionStorage.getItem('cuu_u_vault_unlocked') === '1';
+        if (!isSessionUnlocked) {
+          setIsVaultUnlocked(false);
+          setShowAuthModal(true);
+        } else {
+          setIsVaultUnlocked(true);
+        }
+      } else {
+        // No password set up yet
+        setIsVaultUnlocked(true);
+      }
+    } catch (e) {
+      console.warn('Auth check error:', e);
+      setIsVaultUnlocked(true);
+    }
+
+    // 2. Check Backend Server or use Client-side IndexedDB
     try {
       const res = await fetch(`${API_BASE}/api/books`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         setIsServerMode(true);
         const data = await res.json();
         setBooks(data);
+        fetchLastRead();
         return;
       }
     } catch (e) {
-      // Backend not running -> Fallback to client-side IndexedDB mode (GitHub Pages / Cloudflare Pages)
       setIsServerMode(false);
     }
+
     loadBooksFromIndexedDB();
+    fetchLastRead();
+  };
+
+  const fetchLastRead = async () => {
+    try {
+      const session = await getLastReadSession();
+      setLastReadSession(session);
+    } catch (e) {}
   };
 
   const loadBooksFromIndexedDB = async () => {
@@ -95,17 +139,35 @@ export default function App() {
     }
   };
 
-  // Upload Handler (Dual mode: Server or Client-side IndexedDB)
+  // Auth unlock callback
+  const handleUnlockSuccess = (key, cfg) => {
+    setCryptoKey(key);
+    setAuthConfig(cfg);
+    setIsVaultUnlocked(true);
+    setShowAuthModal(false);
+    showToast('Đã mở khóa kho sách thành công!');
+    initApp();
+  };
+
+  const handleLockVault = () => {
+    sessionStorage.removeItem('cuu_u_vault_unlocked');
+    setCryptoKey(null);
+    setIsVaultUnlocked(false);
+    setShowAuthModal(true);
+    setView('library');
+    showToast('Đã khóa an toàn kho sách');
+  };
+
+  // Upload Handler
   const handleUpload = async (file) => {
     if (!file || !file.name.toLowerCase().endsWith('.epub')) {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
     }
-    showToast(`Đang phân tích: ${file.name}...`);
+    showToast(`Đang mã hóa & lưu trữ: ${file.name}...`);
     setLoading(true);
 
     if (isServerMode) {
-      // Server upload
       const formData = new FormData();
       formData.append('file', file);
       try {
@@ -123,11 +185,11 @@ export default function App() {
         setLoading(false);
       }
     } else {
-      // 100% Client-side (GitHub Pages / Cloudflare Pages)
+      // 100% Client-side with AES-256 Zero-Knowledge encryption
       try {
         const bookData = await parseEpubClient(file);
-        await saveBookToDB(bookData);
-        showToast(`Đã lưu thành công: ${bookData.title}`);
+        await saveBookToDB(bookData, cryptoKey);
+        showToast(`Đã mã hóa và lưu thành công: ${bookData.title}`);
         await loadBooksFromIndexedDB();
       } catch (e) {
         showToast(`Lỗi giải nén EPUB: ${e.message}`);
@@ -156,6 +218,11 @@ export default function App() {
         showToast('Đã xóa sách khỏi thư viện');
         await loadBooksFromIndexedDB();
       }
+
+      // If deleted book was in last read session, clear it
+      if (lastReadSession && lastReadSession.book_id === book.id) {
+        setLastReadSession(null);
+      }
     }
   };
 
@@ -180,9 +247,8 @@ export default function App() {
         setLoading(false);
       }
     } else {
-      // Client-side IndexedDB mode
       try {
-        const bookData = await getBookFromDB(bookId);
+        const bookData = await getBookFromDB(bookId, cryptoKey);
         if (!bookData) throw new Error('Không tìm thấy sách trong bộ nhớ');
         setCurrentBook({ record: bookData, chapters: bookData.chapters, files: bookData.files });
         setChapterIndex(targetChapter);
@@ -213,16 +279,17 @@ export default function App() {
           window.scrollTo({ top: maxScroll * (restoreScroll / 100), behavior: 'smooth' });
         }, 120);
       }
-      sendProgress(bookId, idx, 0);
+
+      updateReadingProgress(bookId, data.title, idx, restoreScroll);
     } catch (e) {
       showToast(e.message);
     }
   };
 
-  // Load Chapter (Client-side IndexedDB mode)
+  // Load Chapter (Client mode)
   const loadChapterClient = (bookData, idx, restoreScroll = 0) => {
     const chapters = bookData.chapters;
-    const total = chapters.len || chapters.length;
+    const total = chapters.length;
     if (idx < 1 || idx > total) return;
 
     const chMeta = chapters[idx - 1];
@@ -249,10 +316,25 @@ export default function App() {
       }, 120);
     }
 
-    updateProgressInDB(bookData.id, idx, 0);
+    updateReadingProgress(bookData.id, chMeta.title, idx, restoreScroll);
   };
 
-  const sendProgress = (bookId, idx, percent) => {
+  const updateReadingProgress = (bookId, chapterTitle, idx, percent) => {
+    const bookTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
+
+    // 1. Save Last Read Session for quick resume banner
+    const sessionData = {
+      book_id: bookId,
+      book_title: bookTitle,
+      chapter_index: idx,
+      chapter_title: chapterTitle,
+      scroll_percent: percent,
+      cover_url: currentBook?.record?.cover_url || currentBook?.cover_data || null
+    };
+    setLastReadSession(sessionData);
+    saveLastReadSession(sessionData);
+
+    // 2. Save book progress
     if (isServerMode) {
       fetch(`${API_BASE}/api/books/${bookId}/progress`, {
         method: 'POST',
@@ -308,7 +390,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [view, currentChapter]);
 
-  // Touch Swipe on Mobile
+  // Touch Swipe
   const handleTouchStart = (e) => {
     touchStartXRef.current = e.changedTouches[0].screenX;
   };
@@ -341,16 +423,20 @@ export default function App() {
       clearTimeout(scrollTimerRef.current);
       scrollTimerRef.current = setTimeout(() => {
         if (currentBook) {
-          sendProgress(currentBook.record.id, chapterIndex, progress);
+          updateReadingProgress(
+            currentBook.record.id,
+            currentChapter?.title || '',
+            chapterIndex,
+            progress
+          );
         }
       }, 1000);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [view, currentBook, chapterIndex]);
+  }, [view, currentBook, currentChapter, chapterIndex]);
 
-  // Filtered books
   const filteredBooks = books.filter(b =>
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.author.toLowerCase().includes(searchQuery.toLowerCase())
@@ -372,6 +458,7 @@ export default function App() {
                   {isServerMode ? 'Server Sync' : 'Offline / Pages'}
                 </span>
               </div>
+              
               <div className="search-container">
                 <Search size={18} className="search-icon" />
                 <input
@@ -382,10 +469,31 @@ export default function App() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {authConfig && (
+                  <button
+                    className="icon-btn"
+                    onClick={handleLockVault}
+                    title="Khóa an toàn kho sách"
+                  >
+                    <Lock size={19} style={{ color: 'var(--accent-color)' }} />
+                  </button>
+                )}
+
+                {!authConfig && (
+                  <button
+                    className="icon-btn"
+                    onClick={() => setShowAuthModal(true)}
+                    title="Thiết lập mật mã bảo mật kho sách"
+                  >
+                    <ShieldCheck size={20} />
+                  </button>
+                )}
+
                 <label className="btn btn-primary" title="Thêm sách EPUB">
                   <Plus size={18} />
-                  <span className="hide-on-mobile">Thêm Sách (EPUB)</span>
+                  <span className="hide-on-mobile">Thêm Sách</span>
                   <input
                     type="file"
                     accept=".epub"
@@ -398,6 +506,38 @@ export default function App() {
           </header>
 
           <main className="library-wrapper">
+            
+            {/* TIẾP TỤC ĐỌC GẦN NHẤT (CONTINUE READING BANNER) */}
+            {lastReadSession && (
+              <div
+                className="continue-banner"
+                onClick={() => openBook(lastReadSession.book_id, lastReadSession.chapter_index)}
+              >
+                <div className="continue-left">
+                  <div className="continue-thumb">
+                    {lastReadSession.cover_url ? (
+                      <img src={lastReadSession.cover_url} alt="" />
+                    ) : (
+                      <BookOpen size={24} style={{ opacity: 0.5 }} />
+                    )}
+                  </div>
+                  <div className="continue-info">
+                    <span className="continue-tag">
+                      <PlayCircle size={14} /> TIẾP TỤC ĐỌC GẦN NHẤT
+                    </span>
+                    <div className="continue-title">{lastReadSession.book_title}</div>
+                    <div className="continue-chapter">
+                      Chương {lastReadSession.chapter_index}: {lastReadSession.chapter_title}
+                    </div>
+                  </div>
+                </div>
+                <button className="continue-btn">
+                  Đọc Tiếp Ngay <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Drop Zone */}
             <div
               className="dropzone"
               onDragOver={(e) => e.preventDefault()}
@@ -409,9 +549,9 @@ export default function App() {
               <UploadCloud size={40} className="dropzone-icon" />
               <div className="dropzone-title">Kéo & thả file EPUB vào đây</div>
               <div className="dropzone-desc">
-                {isServerMode 
-                  ? 'Đồng bộ trực tiếp lên server đám mây cá nhân'
-                  : 'Lưu trữ trực tiếp và an toàn trên thiết bị (Hoạt động offline 100% không cần server)'}
+                {authConfig 
+                  ? '🔒 Tự động mã hóa chuẩn AES-256 trước khi lưu trữ vào bộ nhớ'
+                  : 'Lưu trữ an toàn trên thiết bị (Hoạt động offline 100% không cần server)'}
               </div>
             </div>
 
@@ -723,6 +863,17 @@ export default function App() {
         </div>
       </aside>
 
+      {/* 5. AUTH / VAULT LOCK MODAL */}
+      {showAuthModal && (
+        <AuthModal
+          authConfig={authConfig}
+          onUnlock={handleUnlockSuccess}
+          onClose={() => setShowAuthModal(false)}
+          isForceLock={!isVaultUnlocked}
+        />
+      )}
+
+      {/* Toast popup */}
       <div className={`toast-msg ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );

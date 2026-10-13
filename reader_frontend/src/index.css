@@ -1,6 +1,6 @@
 /* =============================================================================
-   CỬU U THƯ CÁC - REACT RESPONSIVE NOVEL READER STYLESHEET
-   3 Form Factors: Mobile (<640px) | Tablet (641px - 1024px) | Desktop (>1024px)
+   CỬU U THƯ CÁC - COMPLETE RESPONSIVE STYLESHEET
+   Themes, Typography, 3-Device Breakpoints, Auth Lock & Last Read Banner
    ============================================================================= */
 
 :root {
@@ -12,10 +12,6 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 }
-
-/* =============================================================================
-   4 COLOR THEMES
-   ============================================================================= */
 
 /* 1. Sáng (Paper White) */
 html[data-theme="white"] {
@@ -32,7 +28,7 @@ html[data-theme="white"] {
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
 }
 
-/* 2. Ấm áp (Warm Sepia) - Mặc định dịu mắt */
+/* 2. Ấm áp (Warm Sepia) */
 html[data-theme="sepia"] {
   --bg-primary: #f5eedb;
   --bg-surface: #ede3cb;
@@ -77,10 +73,6 @@ html[data-theme="oled"] {
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.95);
 }
 
-/* =============================================================================
-   RESET & FOUNDATIONS
-   ============================================================================= */
-
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -99,10 +91,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* =============================================================================
-   FONTS
-   ============================================================================= */
-
+/* Fonts */
 .font-literata { font-family: 'Literata', Georgia, serif; }
 .font-merriweather { font-family: 'Merriweather', Georgia, serif; }
 .font-lora { font-family: 'Lora', Georgia, serif; }
@@ -110,10 +99,7 @@ body {
 .font-inter { font-family: 'Inter', sans-serif; }
 .font-playfair { font-family: 'Playfair Display', Georgia, serif; }
 
-/* =============================================================================
-   BUTTONS & CONTROLS
-   ============================================================================= */
-
+/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -165,10 +151,7 @@ body {
   border-color: var(--border-color);
 }
 
-/* =============================================================================
-   APP HEADER
-   ============================================================================= */
-
+/* Header */
 .header {
   height: var(--header-height);
   background-color: var(--bg-surface);
@@ -218,7 +201,6 @@ body {
   outline: none;
   transition: var(--transition);
 }
-
 .search-input:focus {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 3px var(--accent-light);
@@ -233,16 +215,101 @@ body {
   pointer-events: none;
 }
 
-/* =============================================================================
-   LIBRARY VIEW (3 DEVICE GRID)
-   ============================================================================= */
-
+/* Library View */
 .library-wrapper {
   max-width: 1280px;
   margin: 1.5rem auto 4rem;
   padding: 0 1.25rem;
 }
 
+/* Continue Reading Banner */
+.continue-banner {
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-secondary));
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.continue-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--accent-color);
+}
+.continue-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex: 1;
+}
+.continue-thumb {
+  width: 52px;
+  height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: var(--border-color);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.continue-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.continue-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+.continue-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.continue-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.continue-chapter {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+.continue-btn {
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  background-color: var(--accent-color);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.continue-btn:hover {
+  background-color: var(--accent-hover);
+  transform: translateX(2px);
+}
+
+/* Dropzone */
 .dropzone {
   border: 2px dashed var(--border-color);
   border-radius: 14px;
@@ -258,18 +325,15 @@ body {
   background-color: var(--accent-light);
   transform: scale(1.005);
 }
-
 .dropzone-icon {
   margin: 0 auto 0.75rem;
   color: var(--accent-color);
 }
-
 .dropzone-title {
   font-size: 1.15rem;
   font-weight: 600;
   margin-bottom: 0.25rem;
 }
-
 .dropzone-desc {
   font-size: 0.9rem;
   color: var(--text-secondary);
@@ -281,7 +345,6 @@ body {
   justify-content: space-between;
   margin-bottom: 1.25rem;
 }
-
 .section-title {
   font-size: 1.35rem;
   font-weight: 700;
@@ -289,7 +352,6 @@ body {
   align-items: center;
   gap: 0.6rem;
 }
-
 .badge {
   font-size: 0.8rem;
   padding: 0.2rem 0.6rem;
@@ -298,7 +360,7 @@ body {
   color: var(--text-secondary);
 }
 
-/* Responsive 3-Device Book Grid */
+/* Book Grid */
 .book-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -317,7 +379,6 @@ body {
   cursor: pointer;
   position: relative;
 }
-
 .book-card:hover {
   transform: translateY(-5px);
   box-shadow: var(--shadow-lg);
@@ -334,7 +395,6 @@ body {
   overflow: hidden;
   position: relative;
 }
-
 .cover-aspect img {
   width: 100%;
   height: 100%;
@@ -353,7 +413,6 @@ body {
   align-items: center;
   justify-content: center;
 }
-
 .cover-placeholder-title {
   font-weight: 700;
   font-size: 0.95rem;
@@ -371,7 +430,6 @@ body {
   flex-direction: column;
   flex: 1;
 }
-
 .card-title {
   font-size: 0.95rem;
   font-weight: 700;
@@ -382,7 +440,6 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-
 .card-author {
   font-size: 0.82rem;
   color: var(--text-secondary);
@@ -391,7 +448,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .card-meta {
   margin-top: auto;
   font-size: 0.75rem;
@@ -400,7 +456,6 @@ body {
   justify-content: space-between;
   align-items: center;
 }
-
 .progress-track {
   width: 100%;
   height: 4px;
@@ -409,7 +464,6 @@ body {
   overflow: hidden;
   margin-top: 0.4rem;
 }
-
 .progress-fill {
   height: 100%;
   background-color: var(--accent-color);
@@ -441,10 +495,7 @@ body {
   transform: scale(1.1);
 }
 
-/* =============================================================================
-   READER VIEW (IMMERSIVE & FULL SCREEN)
-   ============================================================================= */
-
+/* Reader View */
 .reader-header {
   position: fixed;
   top: 0;
@@ -464,7 +515,6 @@ body {
 .reader-header.hidden {
   transform: translateY(-100%);
 }
-
 .reader-title-truncate {
   font-size: 0.95rem;
   font-weight: 600;
@@ -499,7 +549,6 @@ body {
   line-height: var(--reader-line-height);
   transition: font-size 0.2s ease, line-height 0.2s ease, max-width 0.2s ease;
 }
-
 .reader-content-box h1, .reader-content-box h2 {
   font-size: 1.55em;
   font-weight: 700;
@@ -508,7 +557,6 @@ body {
   margin-bottom: 1.5em;
   line-height: 1.35;
 }
-
 .reader-content-box p {
   margin: 0.75em 0;
   text-indent: 1.6em;
@@ -529,10 +577,7 @@ body {
   gap: 1rem;
 }
 
-/* =============================================================================
-   DRAWERS (TOC & SETTINGS)
-   ============================================================================= */
-
+/* Drawers */
 .drawer-overlay {
   position: fixed;
   inset: 0;
@@ -561,7 +606,6 @@ body {
   display: flex;
   flex-direction: column;
 }
-
 .drawer-left {
   left: 0;
   transform: translateX(-100%);
@@ -570,7 +614,6 @@ body {
 .drawer-left.active {
   transform: translateX(0);
 }
-
 .drawer-right {
   right: 0;
   transform: translateX(100%);
@@ -579,7 +622,6 @@ body {
 .drawer-right.active {
   transform: translateX(0);
 }
-
 .drawer-head {
   height: var(--header-height);
   padding: 0 1.25rem;
@@ -593,14 +635,12 @@ body {
   font-weight: 700;
 }
 
-/* TOC Items */
 .toc-scroll {
   list-style: none;
   overflow-y: auto;
   flex: 1;
   padding: 0.5rem 0;
 }
-
 .toc-row {
   padding: 0.75rem 1.25rem;
   cursor: pointer;
@@ -621,7 +661,6 @@ body {
   font-weight: 600;
 }
 
-/* Settings Panels */
 .settings-body {
   padding: 1.25rem;
   overflow-y: auto;
@@ -630,13 +669,11 @@ body {
   flex-direction: column;
   gap: 1.5rem;
 }
-
 .config-group {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
-
 .config-label {
   font-size: 0.85rem;
   font-weight: 700;
@@ -653,7 +690,6 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 0.5rem;
 }
-
 .theme-choice {
   padding: 0.65rem 0.25rem;
   border-radius: 8px;
@@ -678,7 +714,6 @@ body {
   grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
 }
-
 .font-choice {
   padding: 0.55rem 0.5rem;
   border-radius: 6px;
@@ -715,7 +750,7 @@ input[type="range"] {
   border-radius: 9999px;
   font-size: 0.9rem;
   font-weight: 500;
-  z-index: 100;
+  z-index: 120;
   opacity: 0;
   pointer-events: none;
   transition: transform 0.3s ease, opacity 0.3s ease;
@@ -726,11 +761,143 @@ input[type="range"] {
   opacity: 1;
 }
 
-/* =============================================================================
-   3 DEVICE BREAKPOINTS
-   ============================================================================= */
+/* Auth Modal & Lock Screen */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 2.25rem 2rem;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  animation: modalPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.auth-icon-wrapper {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+}
+.auth-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.auth-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+.auth-error-box {
+  background-color: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  margin-bottom: 1.25rem;
+  text-align: left;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  text-align: left;
+}
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.input-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.auth-input {
+  width: 100%;
+  padding: 0.7rem 2.8rem 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  outline: none;
+  transition: var(--transition);
+}
+.auth-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+.toggle-eye-btn {
+  position: absolute;
+  right: 0.85rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.auth-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: -0.25rem;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.auth-submit-btn {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+  margin-top: 0.5rem;
+}
+.auth-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-top: 1rem;
+  cursor: pointer;
+}
+.auth-cancel-btn:hover {
+  color: var(--text-primary);
+}
 
-/* 1. Mobile (< 640px) */
+/* Mobile & Tablet */
 @media (max-width: 640px) {
   :root {
     --header-height: 52px;
@@ -761,9 +928,18 @@ input[type="range"] {
   .nav-bottom-bar .btn {
     width: 100%;
   }
+  .continue-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 1rem;
+    gap: 0.85rem;
+  }
+  .continue-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
-/* 2. Tablet (641px - 1024px) */
 @media (min-width: 641px) and (max-width: 1024px) {
   .book-grid {
     grid-template-columns: repeat(3, 1fr);
@@ -774,7 +950,6 @@ input[type="range"] {
   }
 }
 
-/* 3. Desktop (> 1024px) */
 @media (min-width: 1025px) {
   .book-grid {
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
