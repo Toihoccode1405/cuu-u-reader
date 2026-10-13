@@ -5,6 +5,7 @@ import {
   PlayCircle, User, LogOut, UploadCloud
 } from 'lucide-react';
 import AuthPage from './AuthPage';
+import { getApiUrl } from './api';
 
 export default function App() {
   // Cloud Auth State
@@ -84,7 +85,7 @@ export default function App() {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       // 1. Fetch Books
-      const booksRes = await fetch('/api/books', { headers });
+      const booksRes = await fetch(getApiUrl('/api/books'), { headers });
       if (booksRes.status === 401) {
         handleLogout();
         return;
@@ -95,7 +96,7 @@ export default function App() {
       }
 
       // 2. Fetch Multi-Book Reading History
-      const histRes = await fetch('/api/history', { headers });
+      const histRes = await fetch(getApiUrl('/api/history'), { headers });
       if (histRes.ok) {
         const histData = await histRes.json();
         setHistory(histData);
@@ -169,7 +170,7 @@ export default function App() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/books/upload', {
+      const res = await fetch(getApiUrl('/api/books/upload'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${cloudToken}` },
         body: formData
@@ -194,7 +195,7 @@ export default function App() {
     e.stopPropagation();
     if (window.confirm(`Bạn có chắc muốn xóa "${book.title}" khỏi thư các?`)) {
       try {
-        const res = await fetch(`/api/books/${book.id}`, {
+        const res = await fetch(getApiUrl(`/api/books/${book.id}`), {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${cloudToken}` }
         });
@@ -217,7 +218,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/books/${bookId}`, {
+      const res = await fetch(getApiUrl(`/api/books/${bookId}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
       });
       if (!res.ok) throw new Error('Không thể tải thông tin sách.');
@@ -238,7 +239,7 @@ export default function App() {
 
   const loadChapter = async (bookId, idx, restoreScroll = 0) => {
     try {
-      const res = await fetch(`/api/books/${bookId}/chapters/${idx}`, {
+      const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
       });
       if (!res.ok) throw new Error('Không thể tải nội dung chương.');
@@ -265,7 +266,7 @@ export default function App() {
     if (!cloudToken || !bookId) return;
     try {
       const bTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
-      await fetch(`/api/books/${bookId}/progress`, {
+      await fetch(getApiUrl(`/api/books/${bookId}/progress`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -444,7 +445,7 @@ export default function App() {
                     <div key={item.book_id} className="history-card">
                       {item.has_cover ? (
                         <img
-                          src={`/api/books/${item.book_id}/cover`}
+                        src={getApiUrl(`/api/books/${item.book_id}/cover`)}
                           alt={item.book_title}
                           className="history-cover"
                           onError={(e) => { e.target.style.display = 'none'; }}
@@ -533,7 +534,7 @@ export default function App() {
                       <div className="book-cover-container">
                         {book.has_cover ? (
                           <img
-                            src={`/api/books/${book.id}/cover`}
+                          src={getApiUrl(`/api/books/${book.id}/cover`)}
                             alt={book.title}
                             className="book-cover-img"
                             onError={(e) => { e.target.style.display = 'none'; }}

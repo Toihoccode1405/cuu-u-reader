@@ -14,10 +14,21 @@ CREATE TABLE IF NOT EXISTS books (
   current_chapter INTEGER DEFAULT 1,
   scroll_percent REAL DEFAULT 0,
   has_cover INTEGER DEFAULT 0,
-  cover_url TEXT,
   chapters_json TEXT NOT NULL,
-  added_at INTEGER NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  added_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS covers (
+  book_id TEXT PRIMARY KEY,
+  cover_data TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chapters (
+  book_id TEXT NOT NULL,
+  chapter_index INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  PRIMARY KEY (book_id, chapter_index)
 );
 
 CREATE TABLE IF NOT EXISTS progress (
