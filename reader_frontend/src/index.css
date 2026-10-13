@@ -1824,13 +1824,15 @@ input[type="range"] {
 .reader-body [data-p] {
   scroll-margin-top: calc(var(--header-height, 56px) + 1.5rem);
   border-radius: 5px;
-  transition: background-color 0.6s ease, border-color 0.6s ease;
+  transition: background-color 0.35s ease, box-shadow 0.35s ease;
 }
-.reading-highlight-line {
+/* LƯU Ý: mọi điểm nhấn (ghim / cờ / tô sáng) TUYỆT ĐỐI không được dùng
+   padding, border hay margin - chúng làm đổi chiều cao và bề rộng thật của
+   đoạn văn, khiến chữ phía dưới nhảy dòng (rất rõ trên màn hình điện thoại).
+   Thay bằng box-shadow inset: vẽ được vạch mà không tham gia vào layout. */
+.reader-body [data-p].reading-highlight-line {
   background-color: rgba(194, 89, 30, 0.2) !important;
-  border-left: 4px solid var(--accent-color) !important;
-  padding-left: 12px !important;
-  box-shadow: 0 0 16px rgba(194, 89, 30, 0.18) !important;
+  box-shadow: inset 4px 0 0 var(--accent-color) !important;
   animation: pulseHighlight 1.1s ease-in-out 2;
 }
 @keyframes pulseHighlight {
@@ -1840,31 +1842,33 @@ input[type="range"] {
 
 /* PERSISTENT FLAG MARKER (Cờ đánh dấu) */
 .reader-body [data-p].bookmarked-para {
-  border-left: 4px solid var(--accent-color);
+  position: relative;
   background-color: rgba(194, 89, 30, 0.08) !important;
-  padding-left: 12px;
+  box-shadow: inset 4px 0 0 var(--accent-color);
 }
+/* Cờ nằm trong lề (định vị tuyệt đối) nên không chen vào dòng chữ */
 .reader-body [data-p].bookmarked-para::before {
-  content: '⚑ ';
+  content: '⚑';
+  position: absolute;
+  left: -0.7rem;
+  top: 0.1em;
   color: var(--accent-color);
   font-weight: 700;
+  font-size: 0.8em;
+  line-height: inherit;
 }
 
 /* DÒNG ĐANG GHIM (nhấn 2 lần) - giữ sáng để dễ theo dõi khi đọc */
 .reader-body [data-p].focused-line {
   position: relative;
   background-color: var(--accent-light, rgba(201, 162, 39, 0.16)) !important;
-  border-left: 4px solid var(--accent-color);
-  border-radius: 4px;
-  padding: 2px 10px 2px 12px;
-  margin-left: -2px;
-  box-shadow: inset 0 0 0 1px var(--accent-light, rgba(201, 162, 39, 0.2));
-  transition: background-color 0.25s ease;
+  box-shadow: inset 4px 0 0 var(--accent-color), inset 0 0 0 1px var(--accent-light, rgba(201, 162, 39, 0.2));
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
 }
 .reader-body [data-p].focused-line::after {
   content: '';
   position: absolute;
-  right: 8px;
+  right: -0.7rem;
   top: 50%;
   transform: translateY(-50%);
   width: 6px;
