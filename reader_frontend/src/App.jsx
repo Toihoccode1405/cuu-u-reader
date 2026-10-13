@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, UploadCloud, Cloud,
-  HardDrive, Lock, Unlock, PlayCircle, ShieldCheck
+  HardDrive, Lock, Unlock, PlayCircle, ShieldCheck, UserCheck
 } from 'lucide-react';
 import {
   getAllBooksFromDB, getBookFromDB, saveBookToDB,
@@ -11,8 +11,7 @@ import {
   loadChapterFromEpubBlob
 } from './storage';
 import AuthModal from './AuthModal';
-
-const API_BASE = '';
+import CloudModal from './CloudModal';
 
 export default function App() {
   const [view, setView] = useState('library');
@@ -20,7 +19,17 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
-  const [isServerMode, setIsServerMode] = useState(false);
+
+  // Cloud Account Sync State
+  const [cloudUser, setCloudUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cuu_u_cloud_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+  const [cloudToken, setCloudToken] = useState(() => localStorage.getItem('cuu_u_cloud_token') || '');
+  const [cloudApiUrl, setCloudApiUrl] = useState(() => localStorage.getItem('cuu_u_cloud_api_url') || '');
+  const [showCloudModal, setShowCloudModal] = useState(false);
 
   // Security & Vault Lock State
   const [authConfig, setAuthConfig] = useState(null);
@@ -68,7 +77,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   }, []);
 
-  // Sync settings
+  // Sync settings with DOM & localStorage
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
@@ -80,16 +89,15 @@ export default function App() {
   // Init App on start
   useEffect(() => {
     initApp();
-  }, []);
+  }, [cloudUser, cloudToken]);
 
   const initApp = async () => {
-    // 1. Check Auth config
+    // 1. Check local Vault Auth config
     try {
       const cfg = await getAuthConfig();
       setAuthConfig(cfg);
 
       if (cfg) {
-        // Vault is protected
         const isSessionUnlocked = sessionStorage.getItem('cuu_u_vault_unlocked') === '1';
         if (!isSessionUnlocked) {
           setIsVaultUnlocked(false);
@@ -98,33 +106,87 @@ export default function App() {
           setIsVaultUnlocked(true);
         }
       } else {
-        // No password set up yet
         setIsVaultUnlocked(true);
       }
     } catch (e) {
-      console.warn('Auth check error:', e);
       setIsVaultUnlocked(true);
     }
 
-    // 2. Check Backend Server or use Client-side IndexedDB
-    try {
-      const res = await fetch(`${API_BASE}/api/books`, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        setIsServerMode(true);
-        const data = await res.json();
-        setBooks(data);
-        fetchLastRead();
-        return;
-      }
-    } catch (e) {
-      setIsServerMode(false);
+    // 2. Load books: Cloud Account Sync or Local IndexedDB
+    if (cloudUser && cloudToken && cloudApiUrl) {
+      loadBooksFromCloud();
+      fetchLastReadCloud();
+    } else {
+      loadBooksFromIndexedDB();
+      fetchLastReadLocal();
     }
-
-    loadBooksFromIndexedDB();
-    fetchLastRead();
   };
 
-  const fetchLastRead = async () => {
+  // ---------------------------------------------------------------------------
+  // CLOUD ACCOUNT SYNC LOGIC (CLOUDFLARE BACKEND)
+  // ---------------------------------------------------------------------------
+
+  const loadBooksFromCloud = async () => {
+    try {
+      const res = await fetch(`${cloudApiUrl}/api/books`, {
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBooks(data);
+      } else if (res.status === 401) {
+        handleCloudLogout();
+        showToast('Phiên đăng nhập đám mây đã hết hạn');
+      }
+    } catch (e) {
+      showToast('Không thể kết nối Cloudflare: Chuyển sang dữ liệu máy');
+      loadBooksFromIndexedDB();
+    }
+  };
+
+  const fetchLastReadCloud = async () => {
+    try {
+      const res = await fetch(`${cloudApiUrl}/api/last-read`, {
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLastReadSession(data);
+      }
+    } catch (e) {}
+  };
+
+  const handleCloudLoginSuccess = (token, user, apiUrl) => {
+    localStorage.setItem('cuu_u_cloud_token', token);
+    localStorage.setItem('cuu_u_cloud_user', JSON.stringify(user));
+    localStorage.setItem('cuu_u_cloud_api_url', apiUrl);
+
+    setCloudToken(token);
+    setCloudUser(user);
+    setCloudApiUrl(apiUrl);
+    setShowCloudModal(false);
+
+    showToast(`Đã đồng bộ tài khoản: ${user.username}!`);
+  };
+
+  const handleCloudLogout = () => {
+    localStorage.removeItem('cuu_u_cloud_token');
+    localStorage.removeItem('cuu_u_cloud_user');
+
+    setCloudToken('');
+    setCloudUser(null);
+    setShowCloudModal(false);
+
+    showToast('Đã đăng xuất tài khoản đám mây');
+    loadBooksFromIndexedDB();
+    fetchLastReadLocal();
+  };
+
+  // ---------------------------------------------------------------------------
+  // LOCAL STORAGE LOGIC (INDEXEDDB FALLBACK)
+  // ---------------------------------------------------------------------------
+
+  const fetchLastReadLocal = async () => {
     try {
       const session = await getLastReadSession();
       setLastReadSession(session);
@@ -136,17 +198,17 @@ export default function App() {
       const list = await getAllBooksFromDB();
       setBooks(list);
     } catch (e) {
-      showToast('Lỗi truy cập dữ liệu: ' + e.message);
+      showToast('Lỗi truy cập dữ liệu máy: ' + e.message);
     }
   };
 
-  // Auth unlock callback
+  // Local Vault Lock Handlers
   const handleUnlockSuccess = (key, cfg) => {
     setCryptoKey(key);
     setAuthConfig(cfg);
     setIsVaultUnlocked(true);
     setShowAuthModal(false);
-    showToast('Đã mở khóa kho sách thành công!');
+    showToast('Đã mở khóa tủ sách thành công!');
     initApp();
   };
 
@@ -156,37 +218,42 @@ export default function App() {
     setIsVaultUnlocked(false);
     setShowAuthModal(true);
     setView('library');
-    showToast('Đã khóa an toàn kho sách');
+    showToast('Đã khóa an toàn tủ sách');
   };
 
-  // Upload Handler
+  // ---------------------------------------------------------------------------
+  // UPLOAD HANDLER (DUAL MODE: CLOUD R2 OR LOCAL BLOB)
+  // ---------------------------------------------------------------------------
+
   const handleUpload = async (file) => {
     if (!file || !file.name.toLowerCase().endsWith('.epub')) {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
     }
-    showToast(`Đang mã hóa & lưu trữ: ${file.name}...`);
+    showToast(`Đang phân tích sách: ${file.name}...`);
     setLoading(true);
 
-    if (isServerMode) {
+    if (cloudUser && cloudToken && cloudApiUrl) {
+      // Cloudflare R2 Upload
       const formData = new FormData();
       formData.append('file', file);
       try {
-        const res = await fetch(`${API_BASE}/api/books/upload`, {
+        const res = await fetch(`${cloudApiUrl}/api/books/upload`, {
           method: 'POST',
+          headers: { 'Authorization': `Bearer ${cloudToken}` },
           body: formData
         });
         if (!res.ok) throw new Error(await res.text());
         const newBook = await res.json();
-        showToast(`Đã thêm thành công: ${newBook.title}`);
-        initApp();
+        showToast(`Đã đồng bộ lên Cloud: ${newBook.title}`);
+        await loadBooksFromCloud();
       } catch (e) {
-        showToast(`Thất bại: ${e.message}`);
+        alert(`Lỗi tải lên Cloudflare: ${e.message}`);
       } finally {
         setLoading(false);
       }
     } else {
-      // Client-side IndexedDB Blob storage
+      // Local IndexedDB Blob Storage
       try {
         const bookData = await parseEpubClient(file);
         await saveBookToDB(bookData);
@@ -204,44 +271,51 @@ export default function App() {
   const handleDeleteBook = async (book, e) => {
     e.stopPropagation();
     if (window.confirm(`Bạn có chắc muốn xóa cuốn sách "${book.title}" khỏi thư viện?`)) {
-      if (isServerMode) {
+      if (cloudUser && cloudToken && cloudApiUrl) {
         try {
-          const res = await fetch(`${API_BASE}/api/books/${book.id}`, { method: 'DELETE' });
+          const res = await fetch(`${cloudApiUrl}/api/books/${book.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${cloudToken}` }
+          });
           if (res.ok) {
-            showToast('Đã xóa sách khỏi thư viện');
-            initApp();
+            showToast('Đã xóa sách khỏi Cloud');
+            await loadBooksFromCloud();
           }
         } catch (e) {
           showToast('Lỗi xóa sách');
         }
       } else {
         await deleteBookFromDB(book.id);
-        showToast('Đã xóa sách khỏi thư viện');
+        showToast('Đã xóa sách khỏi thiết bị');
         await loadBooksFromIndexedDB();
       }
 
-      // If deleted book was in last read session, clear it
       if (lastReadSession && lastReadSession.book_id === book.id) {
         setLastReadSession(null);
       }
     }
   };
 
-  // Open Book
+  // ---------------------------------------------------------------------------
+  // READER LOGIC
+  // ---------------------------------------------------------------------------
+
   const openBook = async (bookId, targetChapter = 1) => {
     showToast('Đang mở sách...');
     setLoading(true);
 
-    if (isServerMode) {
+    if (cloudUser && cloudToken && cloudApiUrl) {
       try {
-        const res = await fetch(`${API_BASE}/api/books/${bookId}`);
-        if (!res.ok) throw new Error('Không thể tải thông tin sách');
+        const res = await fetch(`${cloudApiUrl}/api/books/${bookId}`, {
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        if (!res.ok) throw new Error('Không thể tải thông tin sách từ Cloud');
         const bookData = await res.json();
         setCurrentBook(bookData);
         setChapterIndex(targetChapter);
         setView('reader');
         window.scrollTo({ top: 0, behavior: 'instant' });
-        await loadChapter(bookId, targetChapter, bookData.record.scroll_percent);
+        await loadChapterCloud(bookId, targetChapter, bookData.record.scroll_percent);
       } catch (e) {
         showToast(e.message);
       } finally {
@@ -250,7 +324,7 @@ export default function App() {
     } else {
       try {
         const bookData = await getBookFromDB(bookId);
-        if (!bookData) throw new Error('Không tìm thấy sách trong bộ nhớ');
+        if (!bookData) throw new Error('Không tìm thấy sách trong bộ nhớ máy');
         setCurrentBook({ record: bookData, chapters: bookData.chapters, epub_blob: bookData.epub_blob, id: bookData.id, title: bookData.title });
         setChapterIndex(targetChapter);
         setView('reader');
@@ -264,10 +338,11 @@ export default function App() {
     }
   };
 
-  // Load Chapter (Server mode)
-  const loadChapter = async (bookId, idx, restoreScroll = 0) => {
+  const loadChapterCloud = async (bookId, idx, restoreScroll = 0) => {
     try {
-      const res = await fetch(`${API_BASE}/api/books/${bookId}/chapters/${idx}`);
+      const res = await fetch(`${cloudApiUrl}/api/books/${bookId}/chapters/${idx}`, {
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
       if (!res.ok) throw new Error('Không thể tải nội dung chương');
       const data = await res.json();
       setCurrentChapter(data);
@@ -287,7 +362,6 @@ export default function App() {
     }
   };
 
-  // Load Chapter (Client mode from Blob)
   const loadChapterClient = async (bookData, idx, restoreScroll = 0) => {
     try {
       const chapterPayload = await loadChapterFromEpubBlob(bookData, idx);
@@ -311,7 +385,6 @@ export default function App() {
   const updateReadingProgress = (bookId, chapterTitle, idx, percent) => {
     const bookTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
 
-    // 1. Save Last Read Session for quick resume banner
     const sessionData = {
       book_id: bookId,
       book_title: bookTitle,
@@ -321,24 +394,26 @@ export default function App() {
       cover_url: currentBook?.record?.cover_url || currentBook?.cover_data || null
     };
     setLastReadSession(sessionData);
-    saveLastReadSession(sessionData);
 
-    // 2. Save book progress
-    if (isServerMode) {
-      fetch(`${API_BASE}/api/books/${bookId}/progress`, {
+    if (cloudUser && cloudToken && cloudApiUrl) {
+      fetch(`${cloudApiUrl}/api/books/${bookId}/progress`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapter_index: idx, scroll_percent: percent })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cloudToken}`
+        },
+        body: JSON.stringify(sessionData)
       }).catch(() => {});
     } else {
+      saveLastReadSession(sessionData);
       updateProgressInDB(bookId, idx, percent);
     }
   };
 
   const nextChapter = () => {
     if (!currentChapter?.next_index) return;
-    if (isServerMode) {
-      loadChapter(currentBook.record.id, currentChapter.next_index, 0);
+    if (cloudUser && cloudToken && cloudApiUrl) {
+      loadChapterCloud(currentBook.record.id, currentChapter.next_index, 0);
     } else {
       loadChapterClient(currentBook.record, currentChapter.next_index, 0);
     }
@@ -346,8 +421,8 @@ export default function App() {
 
   const prevChapter = () => {
     if (!currentChapter?.prev_index) return;
-    if (isServerMode) {
-      loadChapter(currentBook.record.id, currentChapter.prev_index, 0);
+    if (cloudUser && cloudToken && cloudApiUrl) {
+      loadChapterCloud(currentBook.record.id, currentChapter.prev_index, 0);
     } else {
       loadChapterClient(currentBook.record, currentChapter.prev_index, 0);
     }
@@ -413,7 +488,7 @@ export default function App() {
       scrollTimerRef.current = setTimeout(() => {
         if (currentBook) {
           updateReadingProgress(
-            currentBook.record.id,
+            currentBook.record?.id || currentBook.id,
             currentChapter?.title || '',
             chapterIndex,
             progress
@@ -427,8 +502,8 @@ export default function App() {
   }, [view, currentBook, currentChapter, chapterIndex]);
 
   const filteredBooks = books.filter(b =>
-    b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.author.toLowerCase().includes(searchQuery.toLowerCase())
+    (b.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (b.author || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -442,10 +517,6 @@ export default function App() {
               <div className="brand" onClick={() => initApp()}>
                 <BookOpen size={24} style={{ color: 'var(--accent-color)' }} />
                 <span>Cửu U Thư Các</span>
-                <span className="badge hide-on-mobile" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {isServerMode ? <Cloud size={12} /> : <HardDrive size={12} />}
-                  {isServerMode ? 'Server Sync' : 'Offline / Pages'}
-                </span>
               </div>
               
               <div className="search-container">
@@ -459,7 +530,21 @@ export default function App() {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                
+                {/* Nút Đồng Bộ Tài Khoản Đám Mây */}
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
+                  onClick={() => setShowCloudModal(true)}
+                  title="Đồng bộ tài khoản đám mây giữa PC & Mobile"
+                >
+                  <Cloud size={16} style={{ color: cloudUser ? 'var(--accent-color)' : 'inherit' }} />
+                  <span className="hide-on-mobile">
+                    {cloudUser ? cloudUser.username : 'Đồng bộ Cloud'}
+                  </span>
+                </button>
+
                 {authConfig && (
                   <button
                     className="icon-btn"
@@ -538,9 +623,9 @@ export default function App() {
               <UploadCloud size={40} className="dropzone-icon" />
               <div className="dropzone-title">Kéo & thả file EPUB vào đây</div>
               <div className="dropzone-desc">
-                {authConfig 
-                  ? '🔒 Tự động mã hóa chuẩn AES-256 trước khi lưu trữ vào bộ nhớ'
-                  : 'Lưu trữ an toàn trên thiết bị (Hoạt động offline 100% không cần server)'}
+                {cloudUser 
+                  ? `Đang đăng nhập: [${cloudUser.username}] — Sách sẽ tự động đồng bộ lên Cloudflare R2`
+                  : 'Sách lưu trực tiếp trên thiết bị này (Đăng nhập tài khoản để tự động đồng bộ sang Điện thoại)'}
               </div>
             </div>
 
@@ -555,14 +640,14 @@ export default function App() {
                 <BookOpen size={64} style={{ opacity: 0.3, margin: '0 auto 1rem' }} />
                 <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Chưa có sách trong thư viện</h3>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                  Kéo thả file .epub vào khung phía trên để bắt đầu đọc sách!
+                  Kéo thả file .epub vào khung phía trên hoặc bấm "Thêm Sách" để bắt đầu!
                 </p>
               </div>
             ) : (
               <div className="book-grid">
                 {filteredBooks.map((book) => {
                   const percent = Math.round((book.current_chapter / Math.max(1, book.total_chapters)) * 100);
-                  const coverSrc = book.cover_url || (isServerMode && book.has_cover ? `${API_BASE}/api/books/${book.id}/cover` : null);
+                  const coverSrc = book.cover_url || (cloudApiUrl && book.has_cover ? `${cloudApiUrl}/api/books/${book.id}/cover` : null);
 
                   return (
                     <div
@@ -700,15 +785,15 @@ export default function App() {
         </div>
         <ul className="toc-scroll">
           {currentBook?.chapters
-            ?.filter(ch => ch.title.toLowerCase().includes(tocSearch.toLowerCase()))
+            ?.filter(ch => (ch.title || '').toLowerCase().includes(tocSearch.toLowerCase()))
             .map(ch => (
               <li
                 key={ch.index}
                 className={`toc-row ${ch.index === chapterIndex ? 'active' : ''}`}
                 onClick={() => {
                   setShowTOC(false);
-                  if (isServerMode) {
-                    loadChapter(currentBook.record.id, ch.index, 0);
+                  if (cloudUser && cloudToken && cloudApiUrl) {
+                    loadChapterCloud(currentBook.record.id, ch.index, 0);
                   } else {
                     loadChapterClient(currentBook.record, ch.index, 0);
                   }
@@ -859,6 +944,17 @@ export default function App() {
           onUnlock={handleUnlockSuccess}
           onClose={() => setShowAuthModal(false)}
           isForceLock={!isVaultUnlocked}
+        />
+      )}
+
+      {/* 6. CLOUDFLARE ACCOUNT SYNC MODAL */}
+      {showCloudModal && (
+        <CloudModal
+          cloudUser={cloudUser}
+          cloudApiUrl={cloudApiUrl}
+          onLoginSuccess={handleCloudLoginSuccess}
+          onLogout={handleCloudLogout}
+          onClose={() => setShowCloudModal(false)}
         />
       )}
 
