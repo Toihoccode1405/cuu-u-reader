@@ -21,7 +21,7 @@ export async function apiFetch(path, options = {}) {
   try {
     resp = await fetch(url, options);
   } catch (err) {
-    throw new Error('Không thể kết nối đến máy chủ Cloudflare. Vui lòng kiểm tra mạng.');
+    throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng.');
   }
 
   const contentType = resp.headers.get('content-type') || '';

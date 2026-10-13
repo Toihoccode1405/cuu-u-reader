@@ -102,7 +102,7 @@ export default function App() {
         setHistory(histData);
       }
     } catch (e) {
-      showToast('Lỗi kết nối máy chủ Cloudflare');
+      showToast('Không thể kết nối đến máy chủ. Vui lòng kiểm tra mạng.');
     } finally {
       setLoading(false);
     }
@@ -162,8 +162,7 @@ export default function App() {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
     }
-
-    showToast(`Đang tải sách lên Cloudflare D1: ${file.name}...`);
+    showToast(`Đang tải sách lên: ${file.name}...`);
     setLoading(true);
 
     const formData = new FormData();
@@ -425,7 +424,10 @@ export default function App() {
                     type="file"
                     accept=".epub"
                     style={{ display: 'none' }}
-                    onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                      e.target.value = '';
+                    }}
                   />
                 </label>
               </div>
@@ -503,15 +505,18 @@ export default function App() {
                 <div className="empty-state">
                   <UploadCloud size={54} className="empty-icon" />
                   <h3>Thư các của bạn hiện đang trống</h3>
-                  <p>Hãy tải lên file tiểu thuyết <code>.epub</code> để lưu trữ vĩnh viễn trên Cloudflare và đọc mọi lúc mọi nơi.</p>
+                  <p>Hãy thêm file tiểu thuyết <code>.epub</code> để bắt đầu đọc và đồng bộ trên mọi thiết bị.</p>
                   <label className="btn btn-primary" style={{ marginTop: '1.25rem', cursor: 'pointer' }}>
                     <Plus size={18} />
-                    <span>Tải File .EPUB Lên Ngay</span>
+                    <span>Thêm Sách Vào Thư Các</span>
                     <input
                       type="file"
                       accept=".epub"
                       style={{ display: 'none' }}
-                      onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                        e.target.value = '';
+                      }}
                     />
                   </label>
                 </div>
@@ -760,6 +765,21 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* LOADING OVERLAY */}
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-card">
+            <div className="spinner"></div>
+            <p style={{ marginTop: 14, fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+              Đang xử lý và tải sách lên...
+            </p>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Vui lòng đợi trong giây lát
+            </span>
           </div>
         </div>
       )}

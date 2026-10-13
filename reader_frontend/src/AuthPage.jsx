@@ -63,24 +63,8 @@ export default function AuthPage({ onLoginSuccess }) {
           </div>
           <h1 className="auth-brand-title">Cửu U Thư Các</h1>
           <p className="auth-brand-subtitle">
-            Hệ thống đọc tiểu thuyết đám mây • Tự động đồng bộ đa thiết bị
+            Không gian đọc truyện cá nhân • Tự động ghi nhớ trang đọc
           </p>
-        </div>
-
-        {/* Feature Highlights */}
-        <div className="auth-features-row">
-          <div className="auth-feature-item">
-            <Cloud size={16} />
-            <span>Cloudflare D1</span>
-          </div>
-          <div className="auth-feature-item">
-            <Monitor size={16} />
-            <span>PC & Laptop</span>
-          </div>
-          <div className="auth-feature-item">
-            <Smartphone size={16} />
-            <span>Mobile Auto-Sync</span>
-          </div>
         </div>
 
         {/* Tab Switcher */}
@@ -164,7 +148,7 @@ export default function AuthPage({ onLoginSuccess }) {
             disabled={loading}
           >
             {loading ? (
-              <span>Đang kết nối Cloudflare...</span>
+              <span>{tab === 'login' ? 'Đang đăng nhập...' : 'Đang tạo tài khoản...'}</span>
             ) : (
               <>
                 <span>{tab === 'login' ? 'Đăng Nhập Vào Thư Các' : 'Tạo Tài Khoản & Bắt Đầu'}</span>
@@ -176,7 +160,7 @@ export default function AuthPage({ onLoginSuccess }) {
 
         <div className="auth-footer-note">
           <ShieldCheck size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-          <span>Dữ liệu được lưu trữ trên Cloudflare D1. Không cần bật máy chủ PC.</span>
+          <span>Tự động lưu trữ và đồng bộ tiến độ đọc trên mọi thiết bị.</span>
         </div>
       </div>
     </div>
