@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BookOpen, User, Lock, ArrowRight, ShieldCheck, Cloud, Smartphone, Monitor } from 'lucide-react';
+import { apiFetch } from './api';
 
 export default function AuthPage({ onLoginSuccess }) {
   const [tab, setTab] = useState('login'); // 'login' | 'register'
@@ -37,16 +38,11 @@ export default function AuthPage({ onLoginSuccess }) {
     setLoading(true);
     try {
       const endpoint = tab === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const resp = await fetch(endpoint, {
+      const data = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: cleanUser, password }),
       });
-
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data.error || 'Đăng nhập thất bại.');
-      }
 
       // Success
       onLoginSuccess(data.token, data.user);
