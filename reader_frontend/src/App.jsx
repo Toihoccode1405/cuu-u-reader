@@ -1,44 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
-  List, Sliders, Maximize, Minimize, X, UploadCloud, Cloud,
-  HardDrive, Lock, Unlock, PlayCircle, ShieldCheck, UserCheck
+  List, Sliders, Maximize, Minimize, X, History,
+  PlayCircle, User, LogOut, UploadCloud
 } from 'lucide-react';
-import {
-  getAllBooksFromDB, getBookFromDB, saveBookToDB,
-  deleteBookFromDB, updateProgressInDB, parseEpubClient,
-  getAuthConfig, getLastReadSession, saveLastReadSession,
-  loadChapterFromEpubBlob
-} from './storage';
-import AuthModal from './AuthModal';
-import CloudModal from './CloudModal';
+import AuthPage from './AuthPage';
 
 export default function App() {
-  const [view, setView] = useState('library');
+  // Cloud Auth State
+  const [cloudToken, setCloudToken] = useState(() => localStorage.getItem('cuu_u_cloud_token') || '');
+  const [cloudUser, setCloudUser] = useState(() => {
+    try {
+      const u = localStorage.getItem('cuu_u_cloud_user');
+      return u ? JSON.parse(u) : null;
+    } catch (e) { return null; }
+  });
+
+  // View routing: if not logged in -> 'auth' is the index page!
+  const [view, setView] = useState(() => (localStorage.getItem('cuu_u_cloud_token') ? 'library' : 'auth'));
+
+  // Library & History Data
   const [books, setBooks] = useState([]);
+  const [history, setHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
-
-  // Cloud Account Sync State
-  const [cloudUser, setCloudUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cuu_u_cloud_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) { return null; }
-  });
-  const [cloudToken, setCloudToken] = useState(() => localStorage.getItem('cuu_u_cloud_token') || '');
-  const [cloudApiUrl, setCloudApiUrl] = useState(() => localStorage.getItem('cuu_u_cloud_api_url') || '');
-  const [showCloudModal, setShowCloudModal] = useState(false);
-
-  // Security & Vault Lock State
-  const [authConfig, setAuthConfig] = useState(null);
-  const [cryptoKey, setCryptoKey] = useState(null);
-  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
-  // Last Read Session (Tiếp tục đọc gần nhất)
-  const [lastReadSession, setLastReadSession] = useState(null);
 
   // Active Reading State
   const [currentBook, setCurrentBook] = useState(null);
@@ -62,19 +48,20 @@ export default function App() {
       theme: 'sepia',
       font: 'font-literata',
       fontSize: 19,
-      lineHeight: 1.75,
-      maxWidth: 820,
-      align: 'justify'
+      lineHeight: 1.8,
+      maxWidth: 780,
+      justify: true
     };
   });
 
   const lastScrollTopRef = useRef(0);
-  const scrollTimerRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
   const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
 
-  const showToast = useCallback((msg) => {
+  const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3200);
+    setTimeout(() => setToast(null), ms);
   }, []);
 
   // Sync settings with DOM & localStorage
@@ -82,147 +69,91 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
     document.documentElement.style.setProperty('--reader-line-height', settings.lineHeight);
-    document.documentElement.style.setProperty('--max-content-width', `${settings.maxWidth}px`);
+    document.documentElement.style.setProperty('--reader-max-width', `${settings.maxWidth}px`);
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Init App on start
+  // ---------------------------------------------------------------------------
+  // DATA LOADING (AUTO SYNC FROM CLOUDFLARE D1)
+  // ---------------------------------------------------------------------------
+
+  const loadUserData = useCallback(async (token) => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+
+      // 1. Fetch Books
+      const booksRes = await fetch('/api/books', { headers });
+      if (booksRes.status === 401) {
+        handleLogout();
+        return;
+      }
+      if (booksRes.ok) {
+        const booksData = await booksRes.json();
+        setBooks(booksData);
+      }
+
+      // 2. Fetch Multi-Book Reading History
+      const histRes = await fetch('/api/history', { headers });
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setHistory(histData);
+      }
+    } catch (e) {
+      showToast('Lỗi kết nối máy chủ Cloudflare');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  // Auto load on startup if logged in
   useEffect(() => {
-    initApp();
-  }, [cloudUser, cloudToken]);
+    if (cloudToken) {
+      loadUserData(cloudToken);
+    }
+  }, [cloudToken, loadUserData]);
 
-  const initApp = async () => {
-    // 1. Check local Vault Auth config
-    try {
-      const cfg = await getAuthConfig();
-      setAuthConfig(cfg);
-
-      if (cfg) {
-        const isSessionUnlocked = sessionStorage.getItem('cuu_u_vault_unlocked') === '1';
-        if (!isSessionUnlocked) {
-          setIsVaultUnlocked(false);
-          setShowAuthModal(true);
-        } else {
-          setIsVaultUnlocked(true);
-        }
-      } else {
-        setIsVaultUnlocked(true);
+  // Auto re-sync when tab gains focus (e.g., switched from phone to PC)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (cloudToken && view === 'library') {
+        loadUserData(cloudToken);
       }
-    } catch (e) {
-      setIsVaultUnlocked(true);
-    }
-
-    // 2. Load books: Cloud Account Sync or Local IndexedDB
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      loadBooksFromCloud();
-      fetchLastReadCloud();
-    } else {
-      loadBooksFromIndexedDB();
-      fetchLastReadLocal();
-    }
-  };
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [cloudToken, view, loadUserData]);
 
   // ---------------------------------------------------------------------------
-  // CLOUD ACCOUNT SYNC LOGIC (CLOUDFLARE BACKEND)
+  // AUTHENTICATION HANDLERS
   // ---------------------------------------------------------------------------
 
-  const loadBooksFromCloud = async () => {
-    try {
-      const res = await fetch(`${cloudApiUrl}/api/books`, {
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBooks(data);
-      } else if (res.status === 401) {
-        handleCloudLogout();
-        showToast('Phiên đăng nhập đám mây đã hết hạn');
-      }
-    } catch (e) {
-      showToast('Không thể kết nối Cloudflare: Chuyển sang dữ liệu máy');
-      loadBooksFromIndexedDB();
-    }
-  };
-
-  const fetchLastReadCloud = async () => {
-    try {
-      const res = await fetch(`${cloudApiUrl}/api/last-read`, {
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLastReadSession(data);
-      }
-    } catch (e) {}
-  };
-
-  const handleCloudLoginSuccess = (token, user, apiUrl) => {
+  const handleLoginSuccess = (token, user) => {
     localStorage.setItem('cuu_u_cloud_token', token);
     localStorage.setItem('cuu_u_cloud_user', JSON.stringify(user));
-    localStorage.setItem('cuu_u_cloud_api_url', apiUrl);
-
     setCloudToken(token);
     setCloudUser(user);
-    setCloudApiUrl(apiUrl);
-    setShowCloudModal(false);
-
-    showToast(`Đã đồng bộ tài khoản: ${user.username}!`);
+    setView('library');
+    showToast(`Chào mừng ${user.username}!`);
+    loadUserData(token);
   };
 
-  const handleCloudLogout = () => {
+  const handleLogout = () => {
     localStorage.removeItem('cuu_u_cloud_token');
     localStorage.removeItem('cuu_u_cloud_user');
-
     setCloudToken('');
     setCloudUser(null);
-    setShowCloudModal(false);
-
-    showToast('Đã đăng xuất tài khoản đám mây');
-    loadBooksFromIndexedDB();
-    fetchLastReadLocal();
+    setBooks([]);
+    setHistory([]);
+    setCurrentBook(null);
+    setCurrentChapter(null);
+    setView('auth');
+    showToast('Đã đăng xuất.');
   };
 
   // ---------------------------------------------------------------------------
-  // LOCAL STORAGE LOGIC (INDEXEDDB FALLBACK)
-  // ---------------------------------------------------------------------------
-
-  const fetchLastReadLocal = async () => {
-    try {
-      const session = await getLastReadSession();
-      setLastReadSession(session);
-    } catch (e) {}
-  };
-
-  const loadBooksFromIndexedDB = async () => {
-    try {
-      const list = await getAllBooksFromDB();
-      setBooks(list);
-    } catch (e) {
-      showToast('Lỗi truy cập dữ liệu máy: ' + e.message);
-    }
-  };
-
-  // Local Vault Lock Handlers
-  const handleUnlockSuccess = (key, cfg) => {
-    setCryptoKey(key);
-    setAuthConfig(cfg);
-    setIsVaultUnlocked(true);
-    setShowAuthModal(false);
-    showToast('Đã mở khóa tủ sách thành công!');
-    initApp();
-  };
-
-  const handleLockVault = () => {
-    sessionStorage.removeItem('cuu_u_vault_unlocked');
-    setCryptoKey(null);
-    setIsVaultUnlocked(false);
-    setShowAuthModal(true);
-    setView('library');
-    showToast('Đã khóa an toàn tủ sách');
-  };
-
-  // ---------------------------------------------------------------------------
-  // UPLOAD HANDLER (DUAL MODE: CLOUD R2 OR LOCAL BLOB)
+  // BOOK MANAGEMENT (UPLOAD & DELETE)
   // ---------------------------------------------------------------------------
 
   const handleUpload = async (file) => {
@@ -230,121 +161,89 @@ export default function App() {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
     }
-    showToast(`Đang phân tích sách: ${file.name}...`);
+
+    showToast(`Đang tải sách lên Cloudflare D1: ${file.name}...`);
     setLoading(true);
 
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      // Cloudflare R2 Upload
-      const formData = new FormData();
-      formData.append('file', file);
-      try {
-        const res = await fetch(`${cloudApiUrl}/api/books/upload`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${cloudToken}` },
-          body: formData
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const newBook = await res.json();
-        showToast(`Đã đồng bộ lên Cloud: ${newBook.title}`);
-        await loadBooksFromCloud();
-      } catch (e) {
-        alert(`Lỗi tải lên Cloudflare: ${e.message}`);
-      } finally {
-        setLoading(false);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/books/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${cloudToken}` },
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
       }
-    } else {
-      // Local IndexedDB Blob Storage
-      try {
-        const bookData = await parseEpubClient(file);
-        await saveBookToDB(bookData);
-        showToast(`Đã thêm thành công: ${bookData.title} (${bookData.chapters.length} chương)`);
-        await loadBooksFromIndexedDB();
-      } catch (e) {
-        alert(`Lỗi khi đọc file EPUB: ${e.message}\n\nVui lòng kiểm tra lại file .epub của bạn.`);
-      } finally {
-        setLoading(false);
-      }
+
+      const newBook = await res.json();
+      showToast(`Đã thêm thành công: ${newBook.title}!`);
+      await loadUserData(cloudToken);
+    } catch (e) {
+      alert(`Lỗi tải sách: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Delete Handler
   const handleDeleteBook = async (book, e) => {
     e.stopPropagation();
-    if (window.confirm(`Bạn có chắc muốn xóa cuốn sách "${book.title}" khỏi thư viện?`)) {
-      if (cloudUser && cloudToken && cloudApiUrl) {
-        try {
-          const res = await fetch(`${cloudApiUrl}/api/books/${book.id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${cloudToken}` }
-          });
-          if (res.ok) {
-            showToast('Đã xóa sách khỏi Cloud');
-            await loadBooksFromCloud();
-          }
-        } catch (e) {
-          showToast('Lỗi xóa sách');
+    if (window.confirm(`Bạn có chắc muốn xóa "${book.title}" khỏi thư các?`)) {
+      try {
+        const res = await fetch(`/api/books/${book.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        if (res.ok) {
+          showToast(`Đã xóa: ${book.title}`);
+          await loadUserData(cloudToken);
         }
-      } else {
-        await deleteBookFromDB(book.id);
-        showToast('Đã xóa sách khỏi thiết bị');
-        await loadBooksFromIndexedDB();
-      }
-
-      if (lastReadSession && lastReadSession.book_id === book.id) {
-        setLastReadSession(null);
+      } catch (e) {
+        showToast('Lỗi khi xóa sách');
       }
     }
   };
 
   // ---------------------------------------------------------------------------
-  // READER LOGIC
+  // READER ENGINE & AUTO PROGRESS SYNC
   // ---------------------------------------------------------------------------
 
-  const openBook = async (bookId, targetChapter = 1) => {
+  const openBook = async (bookId, targetChapter = 1, restoreScroll = 0) => {
     showToast('Đang mở sách...');
     setLoading(true);
 
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      try {
-        const res = await fetch(`${cloudApiUrl}/api/books/${bookId}`, {
-          headers: { 'Authorization': `Bearer ${cloudToken}` }
-        });
-        if (!res.ok) throw new Error('Không thể tải thông tin sách từ Cloud');
-        const bookData = await res.json();
-        setCurrentBook(bookData);
-        setChapterIndex(targetChapter);
-        setView('reader');
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        await loadChapterCloud(bookId, targetChapter, bookData.record.scroll_percent);
-      } catch (e) {
-        showToast(e.message);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      try {
-        const bookData = await getBookFromDB(bookId);
-        if (!bookData) throw new Error('Không tìm thấy sách trong bộ nhớ máy');
-        setCurrentBook({ record: bookData, chapters: bookData.chapters, epub_blob: bookData.epub_blob, id: bookData.id, title: bookData.title });
-        setChapterIndex(targetChapter);
-        setView('reader');
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        await loadChapterClient(bookData, targetChapter, bookData.scroll_percent);
-      } catch (e) {
-        showToast(e.message);
-      } finally {
-        setLoading(false);
-      }
+    try {
+      const res = await fetch(`/api/books/${bookId}`, {
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
+      if (!res.ok) throw new Error('Không thể tải thông tin sách.');
+      const bookData = await res.json();
+
+      setCurrentBook(bookData);
+      setChapterIndex(targetChapter);
+      setView('reader');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+
+      await loadChapter(bookId, targetChapter, restoreScroll || bookData.record.scroll_percent);
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loadChapterCloud = async (bookId, idx, restoreScroll = 0) => {
+  const loadChapter = async (bookId, idx, restoreScroll = 0) => {
     try {
-      const res = await fetch(`${cloudApiUrl}/api/books/${bookId}/chapters/${idx}`, {
+      const res = await fetch(`/api/books/${bookId}/chapters/${idx}`, {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
       });
-      if (!res.ok) throw new Error('Không thể tải nội dung chương');
+      if (!res.ok) throw new Error('Không thể tải nội dung chương.');
       const data = await res.json();
+
       setCurrentChapter(data);
       setChapterIndex(idx);
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -356,75 +255,99 @@ export default function App() {
         }, 120);
       }
 
-      updateReadingProgress(bookId, data.title, idx, restoreScroll);
+      saveProgressToCloud(bookId, data.title, idx, restoreScroll);
     } catch (e) {
       showToast(e.message);
     }
   };
 
-  const loadChapterClient = async (bookData, idx, restoreScroll = 0) => {
+  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct) => {
+    if (!cloudToken || !bookId) return;
     try {
-      const chapterPayload = await loadChapterFromEpubBlob(bookData, idx);
-      setCurrentChapter(chapterPayload);
-      setChapterIndex(idx);
-      window.scrollTo({ top: 0, behavior: 'instant' });
-
-      if (restoreScroll > 0) {
-        setTimeout(() => {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          window.scrollTo({ top: maxScroll * (restoreScroll / 100), behavior: 'smooth' });
-        }, 120);
-      }
-
-      updateReadingProgress(bookData.id, chapterPayload.title, idx, restoreScroll);
-    } catch (e) {
-      showToast('Lỗi đọc chương: ' + e.message);
-    }
-  };
-
-  const updateReadingProgress = (bookId, chapterTitle, idx, percent) => {
-    const bookTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
-
-    const sessionData = {
-      book_id: bookId,
-      book_title: bookTitle,
-      chapter_index: idx,
-      chapter_title: chapterTitle,
-      scroll_percent: percent,
-      cover_url: currentBook?.record?.cover_url || currentBook?.cover_data || null
-    };
-    setLastReadSession(sessionData);
-
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      fetch(`${cloudApiUrl}/api/books/${bookId}/progress`, {
+      const bTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
+      await fetch(`/api/books/${bookId}/progress`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${cloudToken}`
         },
-        body: JSON.stringify(sessionData)
-      }).catch(() => {});
-    } else {
-      saveLastReadSession(sessionData);
-      updateProgressInDB(bookId, idx, percent);
-    }
+        body: JSON.stringify({
+          chapter_index: idx,
+          chapter_title: chTitle,
+          scroll_percent: scrollPct,
+          book_title: bTitle
+        })
+      });
+
+      // Update history in local state for instant responsiveness
+      setHistory(prev => {
+        const remaining = prev.filter(h => h.book_id !== bookId);
+        return [{
+          book_id: bookId,
+          book_title: bTitle,
+          chapter_index: idx,
+          chapter_title: chTitle,
+          scroll_percent: scrollPct,
+          author: currentBook?.record?.author || '',
+          has_cover: currentBook?.record?.has_cover || false,
+          updated_at: Date.now()
+        }, ...remaining];
+      });
+    } catch (e) {}
   };
 
-  const nextChapter = () => {
-    if (!currentChapter?.next_index) return;
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      loadChapterCloud(currentBook.record.id, currentChapter.next_index, 0);
-    } else {
-      loadChapterClient(currentBook.record, currentChapter.next_index, 0);
-    }
+  // Debounced scroll listener for reading position sync
+  useEffect(() => {
+    if (view !== 'reader' || !currentBook || !currentChapter) return;
+
+    const handleScroll = () => {
+      const st = window.scrollY || document.documentElement.scrollTop;
+      const sh = document.documentElement.scrollHeight - window.innerHeight;
+      const pct = sh > 0 ? Math.min(100, Math.max(0, (st / sh) * 100)) : 0;
+      setScrollProgress(pct);
+
+      // Hide / show header on scroll
+      if (Math.abs(st - lastScrollTopRef.current) > 25) {
+        setHeaderVisible(st < lastScrollTopRef.current || st < 60);
+        lastScrollTopRef.current = st;
+      }
+
+      // Debounce saving progress to cloud
+      clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        saveProgressToCloud(
+          currentBook.record ? currentBook.record.id : currentBook.id,
+          currentChapter.title,
+          chapterIndex,
+          pct
+        );
+      }, 800);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(scrollTimeoutRef.current);
+    };
+  }, [view, currentBook, currentChapter, chapterIndex]);
+
+  // Touch swipe gestures for next/prev chapter
+  const handleTouchStart = (e) => {
+    touchStartXRef.current = e.changedTouches[0].screenX;
+    touchStartYRef.current = e.changedTouches[0].screenY;
   };
 
-  const prevChapter = () => {
-    if (!currentChapter?.prev_index) return;
-    if (cloudUser && cloudToken && cloudApiUrl) {
-      loadChapterCloud(currentBook.record.id, currentChapter.prev_index, 0);
-    } else {
-      loadChapterClient(currentBook.record, currentChapter.prev_index, 0);
+  const handleTouchEnd = (e) => {
+    if (view !== 'reader') return;
+    const diffX = e.changedTouches[0].screenX - touchStartXRef.current;
+    const diffY = e.changedTouches[0].screenY - touchStartYRef.current;
+    if (Math.abs(diffX) > 70 && Math.abs(diffY) < 50) {
+      const bId = currentBook.record ? currentBook.record.id : currentBook.id;
+      if (diffX < 0 && currentChapter?.next_index) {
+        loadChapter(bId, currentChapter.next_index);
+      } else if (diffX > 0 && currentChapter?.prev_index) {
+        loadChapter(bId, currentChapter.prev_index);
+      }
     }
   };
 
@@ -438,87 +361,34 @@ export default function App() {
     }
   };
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (view !== 'reader') return;
-      if (e.key === 'ArrowRight') nextChapter();
-      if (e.key === 'ArrowLeft') prevChapter();
-      if (e.key === 'f' || e.key === 'F') toggleFullscreen();
-      if (e.key === 'Escape') {
-        setShowTOC(false);
-        setShowSettings(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, currentChapter]);
+  // ---------------------------------------------------------------------------
+  // VIEW 1: AUTH INDEX PAGE (IF NOT LOGGED IN)
+  // ---------------------------------------------------------------------------
 
-  // Touch Swipe
-  const handleTouchStart = (e) => {
-    touchStartXRef.current = e.changedTouches[0].screenX;
-  };
+  if (view === 'auth' || !cloudToken) {
+    return <AuthPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
-  const handleTouchEnd = (e) => {
-    if (view !== 'reader') return;
-    const diff = e.changedTouches[0].screenX - touchStartXRef.current;
-    if (Math.abs(diff) > 90) {
-      if (diff > 0) prevChapter();
-      else nextChapter();
-    }
-  };
-
-  // Scroll listener
-  useEffect(() => {
-    const handleScroll = () => {
-      if (view !== 'reader') return;
-      const st = window.pageYOffset || document.documentElement.scrollTop;
-      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = maxScroll > 0 ? (st / maxScroll) * 100 : 0;
-      setScrollProgress(progress);
-
-      if (st > lastScrollTopRef.current && st > 120) {
-        setHeaderVisible(false);
-      } else {
-        setHeaderVisible(true);
-      }
-      lastScrollTopRef.current = st <= 0 ? 0 : st;
-
-      clearTimeout(scrollTimerRef.current);
-      scrollTimerRef.current = setTimeout(() => {
-        if (currentBook) {
-          updateReadingProgress(
-            currentBook.record?.id || currentBook.id,
-            currentChapter?.title || '',
-            chapterIndex,
-            progress
-          );
-        }
-      }, 1000);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [view, currentBook, currentChapter, chapterIndex]);
+  // ---------------------------------------------------------------------------
+  // VIEW 2: LIBRARY VIEW (INDEX FOR LOGGED-IN USERS)
+  // ---------------------------------------------------------------------------
 
   const filteredBooks = books.filter(b =>
-    (b.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (b.author || '').toLowerCase().includes(searchQuery.toLowerCase())
+    b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (b.author && b.author.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      
-      {/* 1. LIBRARY VIEW */}
       {view === 'library' && (
         <>
           <header className="header">
             <div className="header-inner">
-              <div className="brand" onClick={() => initApp()}>
+              <div className="brand" onClick={() => loadUserData(cloudToken)}>
                 <BookOpen size={24} style={{ color: 'var(--accent-color)' }} />
                 <span>Cửu U Thư Các</span>
               </div>
-              
+
               <div className="search-container">
                 <Search size={18} className="search-icon" />
                 <input
@@ -530,41 +400,23 @@ export default function App() {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                
-                {/* Nút Đồng Bộ Tài Khoản Đám Mây */}
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
-                  onClick={() => setShowCloudModal(true)}
-                  title="Đồng bộ tài khoản đám mây giữa PC & Mobile"
-                >
-                  <Cloud size={16} style={{ color: cloudUser ? 'var(--accent-color)' : 'inherit' }} />
-                  <span className="hide-on-mobile">
-                    {cloudUser ? cloudUser.username : 'Đồng bộ Cloud'}
-                  </span>
-                </button>
-
-                {authConfig && (
-                  <button
-                    className="icon-btn"
-                    onClick={handleLockVault}
-                    title="Khóa an toàn kho sách"
-                  >
-                    <Lock size={19} style={{ color: 'var(--accent-color)' }} />
-                  </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* User Profile Badge */}
+                {cloudUser && (
+                  <div className="user-badge" title="Tài khoản đang đăng nhập">
+                    <User size={14} style={{ color: 'var(--accent-color)' }} />
+                    <span className="hide-on-mobile">{cloudUser.username}</span>
+                    <button
+                      className="btn-logout-icon"
+                      onClick={handleLogout}
+                      title="Đăng xuất"
+                    >
+                      <LogOut size={14} />
+                    </button>
+                  </div>
                 )}
 
-                {!authConfig && (
-                  <button
-                    className="icon-btn"
-                    onClick={() => setShowAuthModal(true)}
-                    title="Thiết lập mật mã bảo mật kho sách"
-                  >
-                    <ShieldCheck size={20} />
-                  </button>
-                )}
-
+                {/* Upload Book Button */}
                 <label className="btn btn-primary" title="Thêm sách EPUB">
                   <Plus size={18} />
                   <span className="hide-on-mobile">Thêm Sách</span>
@@ -580,385 +432,338 @@ export default function App() {
           </header>
 
           <main className="library-wrapper">
-            
-            {/* TIẾP TỤC ĐỌC GẦN NHẤT (CONTINUE READING BANNER) */}
-            {lastReadSession && (
-              <div
-                className="continue-banner"
-                onClick={() => openBook(lastReadSession.book_id, lastReadSession.chapter_index)}
-              >
-                <div className="continue-left">
-                  <div className="continue-thumb">
-                    {lastReadSession.cover_url ? (
-                      <img src={lastReadSession.cover_url} alt="" />
-                    ) : (
-                      <BookOpen size={24} style={{ opacity: 0.5 }} />
-                    )}
-                  </div>
-                  <div className="continue-info">
-                    <span className="continue-tag">
-                      <PlayCircle size={14} /> TIẾP TỤC ĐỌC GẦN NHẤT
-                    </span>
-                    <div className="continue-title">{lastReadSession.book_title}</div>
-                    <div className="continue-chapter">
-                      Chương {lastReadSession.chapter_index}: {lastReadSession.chapter_title}
-                    </div>
-                  </div>
+            {/* 1. MULTI-BOOK READING HISTORY SECTION */}
+            {history.length > 0 && (
+              <section className="history-section">
+                <div className="section-header-title">
+                  <History size={20} color="var(--accent-color)" />
+                  <span>Tiến Độ & Lịch Sử Đọc Gần Đây ({history.length})</span>
                 </div>
-                <button className="continue-btn">
-                  Đọc Tiếp Ngay <ArrowRight size={16} />
-                </button>
-              </div>
+                <div className="history-grid">
+                  {history.map((item) => (
+                    <div key={item.book_id} className="history-card">
+                      {item.has_cover ? (
+                        <img
+                          src={`/api/books/${item.book_id}/cover`}
+                          alt={item.book_title}
+                          className="history-cover"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="history-cover-placeholder">
+                          <BookOpen size={28} />
+                        </div>
+                      )}
+                      <div className="history-body">
+                        <div>
+                          <h3 className="history-book-title" title={item.book_title}>
+                            {item.book_title}
+                          </h3>
+                          <div className="history-chapter-info" title={item.chapter_title}>
+                            {item.chapter_title || `Chương ${item.chapter_index}`}
+                          </div>
+                        </div>
+
+                        <div className="history-progress-wrap">
+                          <div className="history-progress-track">
+                            <div
+                              className="history-progress-fill"
+                              style={{ width: `${Math.min(100, Math.max(3, Math.round(item.scroll_percent || 0)))}%` }}
+                            />
+                          </div>
+                          <div className="history-footer-row">
+                            <span className="history-meta-text">
+                              {item.author || 'Tác giả'} • {Math.round(item.scroll_percent || 0)}%
+                            </span>
+                            <button
+                              className="history-resume-btn"
+                              onClick={() => openBook(item.book_id, item.chapter_index, item.scroll_percent)}
+                            >
+                              <PlayCircle size={14} />
+                              <span>Đọc tiếp</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             )}
 
-            {/* Drop Zone */}
-            <div
-              className="dropzone"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (e.dataTransfer.files?.[0]) handleUpload(e.dataTransfer.files[0]);
-              }}
-            >
-              <UploadCloud size={40} className="dropzone-icon" />
-              <div className="dropzone-title">Kéo & thả file EPUB vào đây</div>
-              <div className="dropzone-desc">
-                {cloudUser 
-                  ? `Đang đăng nhập: [${cloudUser.username}] — Sách sẽ tự động đồng bộ lên Cloudflare R2`
-                  : 'Sách lưu trực tiếp trên thiết bị này (Đăng nhập tài khoản để tự động đồng bộ sang Điện thoại)'}
+            {/* 2. FULL BOOK LIBRARY GRID */}
+            <section>
+              <div className="section-header-title">
+                <BookOpen size={20} color="var(--accent-color)" />
+                <span>Tất Cả Sách Trong Thư Các ({filteredBooks.length})</span>
               </div>
-            </div>
 
-            <div className="section-head">
-              <div className="section-title">
-                Tủ Sách Của Bạn <span className="badge">{filteredBooks.length}</span>
-              </div>
-            </div>
-
-            {filteredBooks.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-                <BookOpen size={64} style={{ opacity: 0.3, margin: '0 auto 1rem' }} />
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Chưa có sách trong thư viện</h3>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                  Kéo thả file .epub vào khung phía trên hoặc bấm "Thêm Sách" để bắt đầu!
-                </p>
-              </div>
-            ) : (
-              <div className="book-grid">
-                {filteredBooks.map((book) => {
-                  const percent = Math.round((book.current_chapter / Math.max(1, book.total_chapters)) * 100);
-                  const coverSrc = book.cover_url || (cloudApiUrl && book.has_cover ? `${cloudApiUrl}/api/books/${book.id}/cover` : null);
-
-                  return (
+              {filteredBooks.length === 0 ? (
+                <div className="empty-state">
+                  <UploadCloud size={54} className="empty-icon" />
+                  <h3>Thư các của bạn hiện đang trống</h3>
+                  <p>Hãy tải lên file tiểu thuyết <code>.epub</code> để lưu trữ vĩnh viễn trên Cloudflare và đọc mọi lúc mọi nơi.</p>
+                  <label className="btn btn-primary" style={{ marginTop: '1.25rem', cursor: 'pointer' }}>
+                    <Plus size={18} />
+                    <span>Tải File .EPUB Lên Ngay</span>
+                    <input
+                      type="file"
+                      accept=".epub"
+                      style={{ display: 'none' }}
+                      onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="book-grid">
+                  {filteredBooks.map((book) => (
                     <div
                       key={book.id}
                       className="book-card"
-                      onClick={() => openBook(book.id, book.current_chapter || 1)}
+                      onClick={() => openBook(book.id, book.current_chapter || 1, book.scroll_percent || 0)}
                     >
                       <button
-                        className="delete-btn"
-                        onClick={(e) => handleDeleteBook(book, e)}
+                        className="book-delete-btn"
                         title="Xóa sách"
+                        onClick={(e) => handleDeleteBook(book, e)}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
-                      <div className="cover-aspect">
-                        {coverSrc ? (
-                          <img src={coverSrc} alt={book.title} loading="lazy" />
+
+                      <div className="book-cover-container">
+                        {book.has_cover ? (
+                          <img
+                            src={`/api/books/${book.id}/cover`}
+                            alt={book.title}
+                            className="book-cover-img"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
                         ) : (
-                          <div className="cover-placeholder">
-                            <BookOpen size={36} style={{ opacity: 0.6 }} />
-                            <div className="cover-placeholder-title">{book.title}</div>
+                          <div className="book-cover-placeholder">
+                            <BookOpen size={42} />
                           </div>
                         )}
                       </div>
-                      <div className="book-details">
-                        <div className="card-title" title={book.title}>{book.title}</div>
-                        <div className="card-author">{book.author || 'Khuyết danh'}</div>
-                        <div className="card-meta">
-                          <span>Chương {book.current_chapter}/{book.total_chapters}</span>
-                          <span>{percent}%</span>
-                        </div>
-                        <div className="progress-track">
-                          <div className="progress-fill" style={{ width: `${percent}%` }}></div>
+
+                      <div className="book-info">
+                        <h4 className="book-title" title={book.title}>{book.title}</h4>
+                        <div className="book-author">{book.author || 'Khuyết danh'}</div>
+                        <div className="book-badge">
+                          {book.total_chapters} chương
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </section>
           </main>
         </>
       )}
 
-      {/* 2. READER VIEW */}
-      {view === 'reader' && (
-        <div>
+      {/* -----------------------------------------------------------------------
+          VIEW 3: READER VIEW
+          ----------------------------------------------------------------------- */}
+      {view === 'reader' && currentBook && currentChapter && (
+        <div className="reader-wrapper">
           <header className={`reader-header ${headerVisible ? '' : 'hidden'}`}>
-            <button
-              className="icon-btn"
-              onClick={() => { setView('library'); initApp(); }}
-              title="Quay lại Tủ sách"
-            >
-              <ArrowLeft size={20} />
-              <span className="hide-on-mobile" style={{ marginLeft: 6, fontWeight: 600 }}>Tủ sách</span>
-            </button>
+            <div className="reader-header-inner">
+              <button
+                className="btn btn-icon"
+                onClick={() => {
+                  setView('library');
+                  loadUserData(cloudToken);
+                }}
+                title="Quay lại Thư viện"
+              >
+                <ArrowLeft size={20} />
+              </button>
 
-            <div className="reader-title-truncate">
-              {currentChapter ? currentChapter.title : 'Đang tải...'}
-            </div>
+              <div className="reader-title-truncate">
+                <strong>{currentBook.record ? currentBook.record.title : currentBook.title}</strong>
+                <span className="hide-on-mobile" style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
+                <span className="hide-on-mobile" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
+              </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <button className="icon-btn" onClick={() => setShowTOC(true)} title="Mục lục">
-                <List size={20} />
-              </button>
-              <button className="icon-btn" onClick={() => setShowSettings(true)} title="Cài đặt hiển thị">
-                <Sliders size={20} />
-              </button>
-              <button className="icon-btn hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
-                {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương">
+                  <List size={20} />
+                </button>
+                <button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Cài đặt giao diện">
+                  <Sliders size={20} />
+                </button>
+                <button className="btn btn-icon hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
+                  {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                </button>
+              </div>
             </div>
           </header>
 
-          <div className="progress-indicator-bar" style={{ width: `${scrollProgress}%` }} />
+          <main className="reader-content-box">
+            <h1 className="chapter-header-title">{currentChapter.title}</h1>
+            <div
+              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : ''}`}
+              dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
+            />
 
-          <main className="reading-canvas">
-            <div className={`reader-content-box ${settings.font} ${settings.align === 'left' ? 'align-left' : ''}`}>
-              {currentChapter ? (
-                <>
-                  <h2>{currentChapter.title}</h2>
-                  <div dangerouslySetInnerHTML={{ __html: currentChapter.content_html }} />
-                </>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '6rem 1rem', opacity: 0.6 }}>
-                  Đang tải nội dung chương...
-                </div>
-              )}
-            </div>
-
-            <nav className="nav-bottom-bar">
+            <div className="nav-bottom-bar">
               <button
                 className="btn btn-secondary"
-                disabled={!currentChapter?.prev_index}
-                onClick={prevChapter}
+                disabled={!currentChapter.prev_index}
+                onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.prev_index)}
               >
-                <ArrowLeft size={18} /> Chương trước
+                <ArrowLeft size={16} /> Chương trước
               </button>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                Chương {chapterIndex} / {currentBook?.record?.total_chapters || currentBook?.chapters?.length || 1}
-              </div>
+
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Chương {chapterIndex} / {currentChapter.total_chapters}
+              </span>
+
               <button
                 className="btn btn-primary"
-                disabled={!currentChapter?.next_index}
-                onClick={nextChapter}
+                disabled={!currentChapter.next_index}
+                onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.next_index)}
               >
-                Chương sau <ArrowRight size={18} />
+                Chương tiếp theo <ArrowRight size={16} />
               </button>
-            </nav>
+            </div>
           </main>
+
+          <footer className="reader-footer">
+            <span>{currentChapter.title}</span>
+            <span>{Math.round(scrollProgress)}%</span>
+          </footer>
+
+          {/* TABLE OF CONTENTS DRAWER */}
+          <div className={`drawer-overlay ${showTOC ? 'open' : ''}`} onClick={() => setShowTOC(false)}>
+            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="drawer-header">
+                <h3>Mục Lục Chương</h3>
+                <button className="btn btn-icon" onClick={() => setShowTOC(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div style={{ padding: '0.75rem 1rem' }}>
+                <input
+                  type="text"
+                  className="search-input"
+                  style={{ width: '100%' }}
+                  placeholder="Tìm kiếm tên chương..."
+                  value={tocSearch}
+                  onChange={(e) => setTocSearch(e.target.value)}
+                />
+              </div>
+              <div className="toc-list">
+                {(currentBook.chapters || [])
+                  .filter(c => c.title.toLowerCase().includes(tocSearch.toLowerCase()))
+                  .map((ch) => (
+                    <div
+                      key={ch.index}
+                      className={`toc-item ${ch.index === chapterIndex ? 'active' : ''}`}
+                      onClick={() => {
+                        setShowTOC(false);
+                        loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, ch.index);
+                      }}
+                    >
+                      <span>{ch.title}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          {/* SETTINGS DRAWER */}
+          <div className={`drawer-overlay ${showSettings ? 'open' : ''}`} onClick={() => setShowSettings(false)}>
+            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="drawer-header">
+                <h3>Tùy Chỉnh Giao Diện</h3>
+                <button className="btn btn-icon" onClick={() => setShowSettings(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="settings-section">
+                <label className="settings-label">Màu Nền / Chủ Đề</label>
+                <div className="theme-options">
+                  <div
+                    className={`theme-badge theme-paper ${settings.theme === 'paper' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'paper' }))}
+                  >
+                    Sáng
+                  </div>
+                  <div
+                    className={`theme-badge theme-sepia ${settings.theme === 'sepia' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'sepia' }))}
+                  >
+                    Ấm áp
+                  </div>
+                  <div
+                    className={`theme-badge theme-dark ${settings.theme === 'dark' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'dark' }))}
+                  >
+                    Tối
+                  </div>
+                  <div
+                    className={`theme-badge theme-oled ${settings.theme === 'oled' ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, theme: 'oled' }))}
+                  >
+                    OLED
+                  </div>
+                </div>
+
+                <label className="settings-label">Font Chữ</label>
+                <div className="font-options">
+                  {[
+                    { id: 'font-literata', name: 'Literata (Sách)' },
+                    { id: 'font-merriweather', name: 'Merriweather (Serif)' },
+                    { id: 'font-lora', name: 'Lora (Cổ điển)' },
+                    { id: 'font-be-vietnam', name: 'Be Vietnam Pro' },
+                    { id: 'font-inter', name: 'Inter (Sans)' }
+                  ].map(f => (
+                    <div
+                      key={f.id}
+                      className={`font-badge ${settings.font === f.id ? 'active' : ''}`}
+                      onClick={() => setSettings(s => ({ ...s, font: f.id }))}
+                    >
+                      {f.name}
+                    </div>
+                  ))}
+                </div>
+
+                <label className="settings-label">Cỡ Chữ: {settings.fontSize}px</label>
+                <div className="font-size-control">
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.max(14, s.fontSize - 1) }))}
+                  >
+                    A-
+                  </button>
+                  <span style={{ fontWeight: 600 }}>{settings.fontSize}px</span>
+                  <button
+                    className="size-btn"
+                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.min(32, s.fontSize + 1) }))}
+                  >
+                    A+
+                  </button>
+                </div>
+
+                <label className="settings-label">Căn Đều 2 Bên</label>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    className={`theme-badge ${settings.justify ? 'active' : ''}`}
+                    style={{ flex: 1, textAlign: 'center' }}
+                    onClick={() => setSettings(s => ({ ...s, justify: !s.justify }))}
+                  >
+                    {settings.justify ? 'Đang căn đều' : 'Căn trái'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 3. TABLE OF CONTENTS DRAWER */}
-      <div
-        className={`drawer-overlay ${showTOC ? 'active' : ''}`}
-        onClick={() => setShowTOC(false)}
-      />
-      <aside className={`drawer drawer-left ${showTOC ? 'active' : ''}`}>
-        <div className="drawer-head">
-          <h3>Mục Lục Chương</h3>
-          <button className="icon-btn" onClick={() => setShowTOC(false)}>
-            <X size={20} />
-          </button>
-        </div>
-        <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border-color)' }}>
-          <input
-            type="text"
-            className="search-input"
-            style={{ borderRadius: 6, paddingLeft: '1rem' }}
-            placeholder="Tìm tên hoặc số chương..."
-            value={tocSearch}
-            onChange={(e) => setTocSearch(e.target.value)}
-          />
-        </div>
-        <ul className="toc-scroll">
-          {currentBook?.chapters
-            ?.filter(ch => (ch.title || '').toLowerCase().includes(tocSearch.toLowerCase()))
-            .map(ch => (
-              <li
-                key={ch.index}
-                className={`toc-row ${ch.index === chapterIndex ? 'active' : ''}`}
-                onClick={() => {
-                  setShowTOC(false);
-                  if (cloudUser && cloudToken && cloudApiUrl) {
-                    loadChapterCloud(currentBook.record.id, ch.index, 0);
-                  } else {
-                    loadChapterClient(currentBook.record, ch.index, 0);
-                  }
-                }}
-              >
-                <span>{ch.title}</span>
-                <span style={{ opacity: 0.5, fontSize: '0.8rem' }}>#{ch.index}</span>
-              </li>
-            ))}
-        </ul>
-      </aside>
-
-      {/* 4. SETTINGS DRAWER */}
-      <div
-        className={`drawer-overlay ${showSettings ? 'active' : ''}`}
-        onClick={() => setShowSettings(false)}
-      />
-      <aside className={`drawer drawer-right ${showSettings ? 'active' : ''}`}>
-        <div className="drawer-head">
-          <h3>Cài Đặt Hiển Thị</h3>
-          <button className="icon-btn" onClick={() => setShowSettings(false)}>
-            <X size={20} />
-          </button>
-        </div>
-        <div className="settings-body">
-          <div className="config-group">
-            <div className="config-label">Giao diện đọc</div>
-            <div className="theme-grid">
-              <button
-                className={`theme-choice white ${settings.theme === 'white' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, theme: 'white' }))}
-              >Sáng</button>
-              <button
-                className={`theme-choice sepia ${settings.theme === 'sepia' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, theme: 'sepia' }))}
-              >Ấm áp</button>
-              <button
-                className={`theme-choice slate ${settings.theme === 'slate' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, theme: 'slate' }))}
-              >Ban đêm</button>
-              <button
-                className={`theme-choice oled ${settings.theme === 'oled' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, theme: 'oled' }))}
-              >OLED</button>
-            </div>
-          </div>
-
-          <div className="config-group">
-            <div className="config-label">Phông chữ</div>
-            <div className="font-grid">
-              <button
-                className={`font-choice ${settings.font === 'font-literata' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Literata, serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-literata' }))}
-              >Literata</button>
-              <button
-                className={`font-choice ${settings.font === 'font-merriweather' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Merriweather, serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-merriweather' }))}
-              >Merriweather</button>
-              <button
-                className={`font-choice ${settings.font === 'font-lora' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Lora, serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-lora' }))}
-              >Lora</button>
-              <button
-                className={`font-choice ${settings.font === 'font-vietnam' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Be Vietnam Pro, sans-serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-vietnam' }))}
-              >Vietnam Pro</button>
-              <button
-                className={`font-choice ${settings.font === 'font-inter' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Inter, sans-serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-inter' }))}
-              >Inter</button>
-              <button
-                className={`font-choice ${settings.font === 'font-playfair' ? 'selected' : ''}`}
-                style={{ fontFamily: 'Playfair Display, serif' }}
-                onClick={() => setSettings(s => ({ ...s, font: 'font-playfair' }))}
-              >Playfair</button>
-            </div>
-          </div>
-
-          <div className="config-group">
-            <div className="config-label">
-              <span>Cỡ chữ</span>
-              <span style={{ color: 'var(--accent-color)' }}>{settings.fontSize}px</span>
-            </div>
-            <input
-              type="range"
-              min="14"
-              max="34"
-              value={settings.fontSize}
-              onChange={(e) => setSettings(s => ({ ...s, fontSize: parseInt(e.target.value) }))}
-            />
-          </div>
-
-          <div className="config-group">
-            <div className="config-label">
-              <span>Giãn dòng</span>
-              <span style={{ color: 'var(--accent-color)' }}>{settings.lineHeight}</span>
-            </div>
-            <input
-              type="range"
-              min="1.4"
-              max="2.4"
-              step="0.05"
-              value={settings.lineHeight}
-              onChange={(e) => setSettings(s => ({ ...s, lineHeight: parseFloat(e.target.value) }))}
-            />
-          </div>
-
-          <div className="config-group">
-            <div className="config-label">
-              <span>Độ rộng trang</span>
-              <span style={{ color: 'var(--accent-color)' }}>{settings.maxWidth}px</span>
-            </div>
-            <input
-              type="range"
-              min="600"
-              max="1100"
-              step="20"
-              value={settings.maxWidth}
-              onChange={(e) => setSettings(s => ({ ...s, maxWidth: parseInt(e.target.value) }))}
-            />
-          </div>
-
-          <div className="config-group">
-            <div className="config-label">Căn lề văn bản</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <button
-                className={`font-choice ${settings.align === 'justify' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, align: 'justify' }))}
-              >Căn đều 2 bên</button>
-              <button
-                className={`font-choice ${settings.align === 'left' ? 'selected' : ''}`}
-                onClick={() => setSettings(s => ({ ...s, align: 'left' }))}
-              >Căn trái</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* 5. AUTH / VAULT LOCK MODAL */}
-      {showAuthModal && (
-        <AuthModal
-          authConfig={authConfig}
-          onUnlock={handleUnlockSuccess}
-          onClose={() => setShowAuthModal(false)}
-          isForceLock={!isVaultUnlocked}
-        />
-      )}
-
-      {/* 6. CLOUDFLARE ACCOUNT SYNC MODAL */}
-      {showCloudModal && (
-        <CloudModal
-          cloudUser={cloudUser}
-          cloudApiUrl={cloudApiUrl}
-          onLoginSuccess={handleCloudLoginSuccess}
-          onLogout={handleCloudLogout}
-          onClose={() => setShowCloudModal(false)}
-        />
-      )}
-
-      {/* Toast popup */}
+      {/* TOAST POPUP */}
       <div className={`toast-msg ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );

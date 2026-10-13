@@ -178,9 +178,14 @@ export default {
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
     const userSession = token ? await verifyToken(token) : null;
+    // Auth: Check me
+    if (path === '/api/auth/me' && request.method === 'GET') {
+      if (!userSession) return errorResponse('Phiên đăng nhập hết hạn', 401);
+      return jsonResponse({ user: userSession });
+    }
 
-    if (!userSession && path.startsWith('/api/books')) {
-      return errorResponse('Chưa đăng nhập. Vui lòng đăng nhập để đồng bộ kho sách.', 401);
+    if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read'))) {
+      return errorResponse('Chưa đăng nhập. Vui lòng đăng nhập để sử dụng.', 401);
     }
 
     const userId = userSession?.userId;
@@ -334,7 +339,22 @@ export default {
       return jsonResponse({ success: true });
     }
 
-    // 8. Last Read
+    // 8. History: Full reading history for multiple books
+    if (path === '/api/history' && request.method === 'GET') {
+      const { results } = await env.DB.prepare(`
+        SELECT p.book_id, p.book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.updated_at,
+               b.author, b.total_chapters, b.has_cover
+        FROM progress p
+        LEFT JOIN books b ON p.book_id = b.id AND b.user_id = p.user_id
+        WHERE p.user_id = ?
+        ORDER BY p.updated_at DESC
+        LIMIT 20
+      `).bind(userId).all();
+
+      return jsonResponse(results || []);
+    }
+
+    // 9. Last Read (Latest active book)
     if (path === '/api/last-read' && request.method === 'GET') {
       const last = await env.DB.prepare(
         'SELECT * FROM progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1'
@@ -342,7 +362,6 @@ export default {
 
       return jsonResponse(last || null);
     }
-
     // 9. Cover Image Stream from D1
     const matchCover = path.match(/^\/api\/books\/([^\/]+)\/cover$/);
     if (matchCover && request.method === 'GET') {
