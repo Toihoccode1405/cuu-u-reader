@@ -1,6 +1,10 @@
-name = "cuu-u-reader-api"
+name = "cuu-u-reader"
 main = "src/index.js"
 compatibility_date = "2024-04-01"
+
+[assets]
+directory = "../reader_frontend/dist"
+binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"
