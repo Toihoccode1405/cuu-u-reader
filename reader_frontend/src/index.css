@@ -698,6 +698,21 @@ body {
   overflow-wrap: anywhere;
   letter-spacing: var(--reader-letter-spacing);
 }
+/* Nhấn 2 lần để ghim dòng -> trình duyệt cũng bôi đen chữ theo. Tắt bôi đen để
+   cú nhấn đúp chỉ ghim dòng. Sao chép đoạn văn dùng textContent nên không bị ảnh hưởng. */
+.reader-body.no-select,
+.reader-body.no-select * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Người đọc cần copy -> bật lại trong Cài đặt */
+.reader-body.allow-select {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
 /* Nội dung EPUB cũ có thể còn style inline (font-size, text-align...) -> vô hiệu hoá */
 .reader-body font,
 .reader-body p,
