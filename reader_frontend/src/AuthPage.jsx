@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BookOpen, User, Lock, ArrowRight, ShieldCheck, Cloud, Smartphone, Monitor } from 'lucide-react';
+import XhIcon from './XhIcon';
 import { apiFetch } from './api';
 
 export default function AuthPage({ onLoginSuccess }) {
@@ -58,8 +59,8 @@ export default function AuthPage({ onLoginSuccess }) {
       <div className="auth-index-card">
         {/* Brand Header */}
         <div className="auth-index-brand">
-          <div className="auth-brand-icon">
-            <BookOpen size={36} color="var(--accent-color)" />
+          <div className="auth-brand-seal">
+            <XhIcon name="seal" />
           </div>
           <h1 className="auth-brand-title">Cửu U Thư Các</h1>
           <p className="auth-brand-subtitle">
