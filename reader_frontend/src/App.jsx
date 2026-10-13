@@ -228,7 +228,7 @@ export default function App() {
       setView('reader');
       window.scrollTo({ top: 0, behavior: 'instant' });
 
-      await loadChapter(bookId, targetChapter, restoreScroll || bookData.record.scroll_percent);
+      await loadChapter(bookId, targetChapter, restoreScroll || bookData.record.scroll_percent, bookData.record.title);
     } catch (e) {
       showToast(e.message);
     } finally {
@@ -236,7 +236,7 @@ export default function App() {
     }
   };
 
-  const loadChapter = async (bookId, idx, restoreScroll = 0) => {
+  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
@@ -251,20 +251,61 @@ export default function App() {
       if (restoreScroll > 0) {
         setTimeout(() => {
           const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          window.scrollTo({ top: maxScroll * (restoreScroll / 100), behavior: 'smooth' });
-        }, 120);
+          const targetY = maxScroll * (restoreScroll / 100);
+          window.scrollTo({ top: targetY, behavior: 'smooth' });
+
+          setTimeout(() => {
+            highlightActiveParagraph();
+          }, 350);
+        }, 150);
       }
 
-      saveProgressToCloud(bookId, data.title, idx, restoreScroll);
+      const bTitle = explicitTitle || currentBook?.record?.title || currentBook?.title;
+      saveProgressToCloud(bookId, data.title, idx, restoreScroll, bTitle);
     } catch (e) {
       showToast(e.message);
     }
   };
 
-  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct) => {
+  const highlightActiveParagraph = () => {
+    const container = document.querySelector('.reader-body');
+    if (!container) return;
+
+    const paras = Array.from(container.querySelectorAll('p, div')).filter(el => {
+      return el.textContent && el.textContent.trim().length > 15;
+    });
+
+    if (paras.length === 0) return;
+
+    const viewTarget = window.scrollY + (window.innerHeight * 0.35);
+    let closestEl = null;
+    let minDiff = Infinity;
+
+    paras.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      const elTop = rect.top + window.scrollY;
+      const diff = Math.abs(elTop - viewTarget);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestEl = el;
+      }
+    });
+
+    if (closestEl) {
+      document.querySelectorAll('.reading-highlight-line').forEach(el => el.classList.remove('reading-highlight-line'));
+      closestEl.classList.add('reading-highlight-line');
+      closestEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      setTimeout(() => {
+        if (closestEl) closestEl.classList.remove('reading-highlight-line');
+      }, 4500);
+    }
+  };
+
+  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null) => {
     if (!cloudToken || !bookId) return;
     try {
-      const bTitle = currentBook?.record?.title || currentBook?.title || 'Sách';
+      const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Quang Âm Chi Ngoại Full';
       await fetch(getApiUrl(`/api/books/${bookId}/progress`), {
         method: 'POST',
         headers: {
