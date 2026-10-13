@@ -746,11 +746,14 @@ async function extractChapterContent(zip, toc, chapterIdx, targetCh) {
 
   const raw = await chFile.async('text');
 
-  if (!anchor) {
-    return cleanXhtml(raw);
-  }
-
-  const start = anchorOffset(raw, anchor);
+  // Mục đầu tiên của mỗi file trong NCX KHÔNG kèm #fragment (ví dụ
+  // "1/1/OEBPS/text00033.html"), trong khi các mục sau trong cùng file thì có.
+  // Trước đây gặp trường hợp này là trả về nguyên file -> chương chứa luôn
+  // tiêu đề của hàng chục chương kế tiếp, không khớp với tiêu đề đã chọn.
+  // Nay: không có anchor => chương bắt đầu từ đầu file, và vẫn phải cắt tại
+  // anchor của chương kế tiếp trong cùng file.
+  const found = anchor ? anchorOffset(raw, anchor) : 0;
+  const start = found >= 0 ? found : 0;
 
   // Nearest following chapter anchor inside the same file closes this chapter.
   let end = -1;
@@ -762,7 +765,7 @@ async function extractChapterContent(zip, toc, chapterIdx, targetCh) {
     if (off > start && (end < 0 || off < end)) end = off;
   }
 
-  const slice = end > start ? raw.slice(start, end) : (start >= 0 ? raw.slice(start) : raw);
+  const slice = end > start ? raw.slice(start, end) : raw.slice(start);
   return cleanXhtml(slice);
 }
 

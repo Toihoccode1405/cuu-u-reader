@@ -1430,6 +1430,17 @@ input[type="range"] {
     max-width: 40%;
     font-size: 0.85rem;
   }
+  /* Trên điện thoại, khi đã cuộn xuống thì tiêu đề H1 đã trôi khỏi màn hình;
+     hiện tên SÁCH ở header không giúp ích gì. Đổi sang hiện TIÊU ĐỀ CHƯƠNG để
+     người đọc luôn biết mình đang ở chương nào. */
+  .header-book-title {
+    display: none;
+  }
+  .header-chapter-title {
+    display: inline;
+    font-size: 0.8rem !important;
+    opacity: 0.9 !important;
+  }
   .nav-bottom-bar {
     flex-direction: column;
     gap: 0.75rem;
