@@ -385,26 +385,93 @@ body {
   border-color: var(--accent-color);
 }
 
-.cover-aspect {
+.cover-aspect, .book-cover-container {
   width: 100%;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(135deg, var(--bg-secondary), var(--border-color));
+  background: var(--bg-color);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
+  border-bottom: 1px solid var(--border-color);
 }
-.cover-aspect img {
+.cover-aspect img, .book-cover-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
   transition: transform 0.3s ease;
 }
-.book-card:hover .cover-aspect img {
-  transform: scale(1.03);
+.book-card:hover .cover-aspect img, .book-card:hover .book-cover-img {
+  transform: scale(1.04);
 }
-
+.book-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(194, 89, 30, 0.08);
+  color: var(--accent-color);
+}
+.book-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+}
+.book-card:hover .book-delete-btn {
+  opacity: 1;
+}
+.book-delete-btn:hover {
+  background: #ef4444;
+}
+.book-info {
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.book-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+.book-author {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.book-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(194, 89, 30, 0.1);
+  color: var(--accent-color);
+  width: fit-content;
+  margin-top: 4px;
+}
 .cover-placeholder {
   padding: 1.25rem;
   text-align: center;
@@ -544,7 +611,7 @@ body {
 .reader-content-box {
   max-width: var(--max-content-width);
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: calc(var(--header-height, 56px) + 2.5rem) 1.5rem 5rem 1.5rem;
   font-size: var(--reader-font-size);
   line-height: var(--reader-line-height);
   transition: font-size 0.2s ease, line-height 0.2s ease, max-width 0.2s ease;
@@ -915,7 +982,7 @@ input[type="range"] {
     gap: 1rem;
   }
   .reader-content-box {
-    padding: 0 1rem;
+    padding: calc(var(--header-height, 52px) + 2rem) 1rem 4rem 1rem;
   }
   .reader-title-truncate {
     max-width: 40%;
@@ -946,7 +1013,7 @@ input[type="range"] {
     gap: 1.25rem;
   }
   .reader-content-box {
-    padding: 0 2rem;
+    padding: calc(var(--header-height, 56px) + 2.5rem) 2rem 5rem 2rem;
   }
 }
 
@@ -1311,4 +1378,14 @@ input[type="range"] {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* READING PARAGRAPH HIGHLIGHT ON RESUME */
+.reading-highlight-line {
+  background: rgba(194, 89, 30, 0.22) !important;
+  border-left: 4px solid var(--accent-color) !important;
+  padding-left: 14px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 14px rgba(194, 89, 30, 0.15) !important;
+  transition: background 2s ease, border-color 2s ease;
 }

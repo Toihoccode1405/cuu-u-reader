@@ -183,8 +183,10 @@ export default {
       if (!userSession) return errorResponse('Phiên đăng nhập hết hạn', 401);
       return jsonResponse({ user: userSession });
     }
+    // Allow public access to cover images (HTML <img> tag cannot send Authorization headers)
+    const isCoverRequest = /^\/api\/books\/[^\/]+\/cover$/.test(path);
 
-    if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read'))) {
+    if (!isCoverRequest && !userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read'))) {
       return errorResponse('Chưa đăng nhập. Vui lòng đăng nhập để sử dụng.', 401);
     }
 
@@ -409,6 +411,12 @@ export default {
       const bookId = matchProgress[1];
       const { chapter_index, scroll_percent, chapter_title, book_title } = await request.json();
 
+      let resolvedTitle = book_title;
+      if (!resolvedTitle || resolvedTitle === 'Sách') {
+        const bRow = await env.DB.prepare('SELECT title FROM books WHERE id = ?').bind(bookId).first();
+        resolvedTitle = bRow?.title || 'Sách';
+      }
+
       await env.DB.prepare(
         'UPDATE books SET current_chapter = ?, scroll_percent = ? WHERE id = ? AND user_id = ?'
       ).bind(chapter_index, scroll_percent, bookId, userId).run();
@@ -417,11 +425,12 @@ export default {
         INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, book_id) DO UPDATE SET
+          book_title = excluded.book_title,
           chapter_index = excluded.chapter_index,
           chapter_title = excluded.chapter_title,
           scroll_percent = excluded.scroll_percent,
           updated_at = excluded.updated_at
-      `).bind(userId, bookId, book_title || 'Sách', chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, Date.now()).run();
+      `).bind(userId, bookId, resolvedTitle, chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, Date.now()).run();
 
       return jsonResponse({ success: true });
     }
@@ -429,10 +438,10 @@ export default {
     // 8. History: Full reading history for multiple books
     if (path === '/api/history' && request.method === 'GET') {
       const { results } = await env.DB.prepare(`
-        SELECT p.book_id, p.book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.updated_at,
+        SELECT p.book_id, COALESCE(b.title, p.book_title) AS book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.updated_at,
                b.author, b.total_chapters, b.has_cover
         FROM progress p
-        LEFT JOIN books b ON p.book_id = b.id AND b.user_id = p.user_id
+        LEFT JOIN books b ON p.book_id = b.id
         WHERE p.user_id = ?
         ORDER BY p.updated_at DESC
         LIMIT 20
