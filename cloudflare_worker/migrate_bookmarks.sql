@@ -1,0 +1,1 @@
+ALTER TABLE books ADD COLUMN para_index INTEGER DEFAULT 0;

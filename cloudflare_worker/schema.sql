@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS books (
   total_chapters INTEGER NOT NULL,
   current_chapter INTEGER DEFAULT 1,
   scroll_percent REAL DEFAULT 0,
+  para_index INTEGER DEFAULT 0,
   has_cover INTEGER DEFAULT 0,
   chapters_json TEXT NOT NULL,
   added_at INTEGER NOT NULL
@@ -45,6 +46,21 @@ CREATE TABLE IF NOT EXISTS progress (
   chapter_index INTEGER NOT NULL,
   chapter_title TEXT NOT NULL,
   scroll_percent REAL NOT NULL,
+  para_index INTEGER DEFAULT 0,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)
 );
+
+CREATE TABLE IF NOT EXISTS bookmarks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  book_id TEXT NOT NULL,
+  chapter_index INTEGER NOT NULL,
+  para_index INTEGER NOT NULL,
+  scroll_percent REAL DEFAULT 0,
+  excerpt TEXT,
+  note TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user_book ON bookmarks (user_id, book_id);
