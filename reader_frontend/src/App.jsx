@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
-  PlayCircle, User, LogOut, UploadCloud
+  PlayCircle, User, LogOut, UploadCloud, Flag
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import { getApiUrl } from './api';
@@ -37,8 +37,13 @@ export default function App() {
   // Drawers & Settings
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
   const [tocSearch, setTocSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Bookmarks (Cờ đánh dấu vị trí đọc) + exact paragraph tracking
+  const [bookmarks, setBookmarks] = useState([]);
+  const [activeParaIndex, setActiveParaIndex] = useState(0);
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
@@ -59,6 +64,7 @@ export default function App() {
   const scrollTimeoutRef = useRef(null);
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
+  const pendingRestoreRef = useRef(null);
 
   const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
@@ -212,7 +218,7 @@ export default function App() {
   // READER ENGINE & AUTO PROGRESS SYNC
   // ---------------------------------------------------------------------------
 
-  const openBook = async (bookId, targetChapter = 1, restoreScroll = 0) => {
+  const openBook = async (bookId, targetChapter = 1, restoreScroll = 0, restorePara = null) => {
     showToast('Đang mở sách...');
     setLoading(true);
 
@@ -228,7 +234,11 @@ export default function App() {
       setView('reader');
       window.scrollTo({ top: 0, behavior: 'instant' });
 
-      await loadChapter(bookId, targetChapter, restoreScroll || bookData.record.scroll_percent, bookData.record.title);
+      await loadBookmarks(bookId);
+
+      const para = restorePara !== null ? restorePara : (bookData.record.para_index || 0);
+      const pct = restoreScroll || bookData.record.scroll_percent || 0;
+      await loadChapter(bookId, targetChapter, pct, bookData.record.title, para);
     } catch (e) {
       showToast(e.message);
     } finally {
@@ -236,7 +246,7 @@ export default function App() {
     }
   };
 
-  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null) => {
+  const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
@@ -244,68 +254,181 @@ export default function App() {
       if (!res.ok) throw new Error('Không thể tải nội dung chương.');
       const data = await res.json();
 
+      // Queue exact-position restore; consumed by the render effect below
+      pendingRestoreRef.current = { para: restorePara, pct: restoreScroll || 0 };
+
+      window.scrollTo({ top: 0, behavior: 'instant' });
       setCurrentChapter(data);
       setChapterIndex(idx);
-      window.scrollTo({ top: 0, behavior: 'instant' });
-
-      if (restoreScroll > 0) {
-        setTimeout(() => {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          const targetY = maxScroll * (restoreScroll / 100);
-          window.scrollTo({ top: targetY, behavior: 'smooth' });
-
-          setTimeout(() => {
-            highlightActiveParagraph();
-          }, 350);
-        }, 150);
-      }
 
       const bTitle = explicitTitle || currentBook?.record?.title || currentBook?.title;
-      saveProgressToCloud(bookId, data.title, idx, restoreScroll, bTitle);
+      saveProgressToCloud(bookId, data.title, idx, restoreScroll || 0, bTitle, restorePara || 0);
     } catch (e) {
       showToast(e.message);
     }
   };
 
-  const highlightActiveParagraph = () => {
+  // Assigns a stable data-p index to every readable block of the chapter.
+  // Same HTML -> same indices on every device, so a saved position maps 1:1.
+  const indexParagraphs = useCallback(() => {
     const container = document.querySelector('.reader-body');
-    if (!container) return;
+    if (!container) return [];
 
-    const paras = Array.from(container.querySelectorAll('p, div')).filter(el => {
-      return el.textContent && el.textContent.trim().length > 15;
+    const blocks = Array.from(container.querySelectorAll('p, div')).filter(el => {
+      const text = (el.textContent || '').trim();
+      if (text.length < 2) return false;
+      const hasNestedBlock = Array.from(el.children).some(
+        ch => /^(P|DIV)$/.test(ch.tagName) && (ch.textContent || '').trim().length > 1
+      );
+      return !hasNestedBlock;
     });
 
-    if (paras.length === 0) return;
+    blocks.forEach((el, i) => el.setAttribute('data-p', String(i)));
+    return blocks;
+  }, []);
 
-    const viewTarget = window.scrollY + (window.innerHeight * 0.35);
-    let closestEl = null;
-    let minDiff = Infinity;
+  // The block that sits at the top of the viewport right now.
+  const getActiveParaIndex = useCallback(() => {
+    const container = document.querySelector('.reader-body');
+    if (!container) return 0;
 
-    paras.forEach(el => {
+    const blocks = Array.from(container.querySelectorAll('[data-p]'));
+    if (blocks.length === 0) return 0;
+
+    const headerOffset = 96;
+    for (const el of blocks) {
       const rect = el.getBoundingClientRect();
-      const elTop = rect.top + window.scrollY;
-      const diff = Math.abs(elTop - viewTarget);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestEl = el;
+      if (rect.bottom > headerOffset && rect.top < window.innerHeight - 40) {
+        return parseInt(el.getAttribute('data-p'), 10) || 0;
       }
-    });
+    }
+    return blocks.length - 1;
+  }, []);
 
-    if (closestEl) {
-      document.querySelectorAll('.reading-highlight-line').forEach(el => el.classList.remove('reading-highlight-line'));
-      closestEl.classList.add('reading-highlight-line');
-      closestEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const flashParagraph = (paraIndex, { scroll = true, keepMs = 5000 } = {}) => {
+    const el = document.querySelector(`.reader-body [data-p="${paraIndex}"]`);
+    if (!el) return;
 
-      setTimeout(() => {
-        if (closestEl) closestEl.classList.remove('reading-highlight-line');
-      }, 4500);
+    document.querySelectorAll('.reading-highlight-line').forEach(n => n.classList.remove('reading-highlight-line'));
+
+    if (scroll) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    el.classList.add('reading-highlight-line');
+    setTimeout(() => el.classList.remove('reading-highlight-line'), keepMs);
+  };
+
+  // Applies persistent flag markers for every bookmark of the open chapter.
+  const applyBookmarkMarkers = useCallback((list, chapIdx) => {
+    document.querySelectorAll('.bookmarked-para').forEach(el => el.classList.remove('bookmarked-para'));
+    (list || [])
+      .filter(bm => bm.chapter_index === chapIdx)
+      .forEach(bm => {
+        const el = document.querySelector(`.reader-body [data-p="${bm.para_index}"]`);
+        if (el) el.classList.add('bookmarked-para');
+      });
+  }, []);
+
+  const loadBookmarks = async (bookId) => {
+    try {
+      const res = await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
+      if (res.ok) {
+        const list = await res.json();
+        setBookmarks(list);
+        return list;
+      }
+    } catch (e) {}
+    return [];
+  };
+
+  const getActiveExcerpt = () => {
+    const el = document.querySelector(`.reader-body [data-p="${getActiveParaIndex()}"]`);
+    return el ? (el.textContent || '').trim().slice(0, 160) : '';
+  };
+
+  const toggleBookmark = async () => {
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (!bookId) return;
+
+    const paraIndex = getActiveParaIndex();
+    const progressPercent = computeScrollPercent();
+
+    try {
+      const res = await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cloudToken}`
+        },
+        body: JSON.stringify({
+          chapter_index: chapterIndex,
+          para_index: paraIndex,
+          scroll_percent: progressPercent,
+          excerpt: getActiveExcerpt()
+        })
+      });
+
+      const data = await res.json();
+      const list = await loadBookmarks(bookId);
+      applyBookmarkMarkers(list, chapterIndex);
+
+      if (data.removed) {
+        showToast('Đã bỏ cờ tại vị trí này');
+      } else {
+        showToast('Đã cắm cờ tại vị trí này ⚑');
+        flashParagraph(paraIndex, { scroll: false, keepMs: 2200 });
+      }
+    } catch (e) {
+      showToast('Không thể lưu cờ đánh dấu.');
     }
   };
 
-  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null) => {
+  const removeBookmark = async (bm) => {
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (!bookId) return;
+
+    try {
+      await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cloudToken}`
+        },
+        body: JSON.stringify({ id: bm.id })
+      });
+      const list = await loadBookmarks(bookId);
+      applyBookmarkMarkers(list, chapterIndex);
+      showToast('Đã bỏ cờ');
+    } catch (e) {}
+  };
+
+  const jumpToBookmark = async (bm) => {
+    const bookId = currentBook?.record?.id || currentBook?.id;
+    if (!bookId) return;
+
+    setShowBookmarks(false);
+
+    if (bm.chapter_index !== chapterIndex) {
+      const title = currentBook?.record?.title || currentBook?.title;
+      await loadChapter(bookId, bm.chapter_index, bm.scroll_percent || 0, title, bm.para_index);
+    } else {
+      flashParagraph(bm.para_index);
+    }
+  };
+
+  const computeScrollPercent = () => {
+    const sh = document.documentElement.scrollHeight - window.innerHeight;
+    const st = window.scrollY || document.documentElement.scrollTop;
+    return sh > 0 ? Math.min(100, Math.max(0, (st / sh) * 100)) : 0;
+  };
+
+  const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0) => {
     if (!cloudToken || !bookId) return;
     try {
-      const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Quang Âm Chi Ngoại Full';
+      const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Sách';
       await fetch(getApiUrl(`/api/books/${bookId}/progress`), {
         method: 'POST',
         headers: {
@@ -316,6 +439,7 @@ export default function App() {
           chapter_index: idx,
           chapter_title: chTitle,
           scroll_percent: scrollPct,
+          para_index: paraIndex,
           book_title: bTitle
         })
       });
@@ -329,6 +453,7 @@ export default function App() {
           chapter_index: idx,
           chapter_title: chTitle,
           scroll_percent: scrollPct,
+          para_index: paraIndex,
           author: currentBook?.record?.author || '',
           has_cover: currentBook?.record?.has_cover || false,
           updated_at: Date.now()
@@ -336,6 +461,49 @@ export default function App() {
       });
     } catch (e) {}
   };
+
+  // Runs after every chapter render: index paragraphs, restore exact spot, repaint flags.
+  useEffect(() => {
+    if (view !== 'reader' || !currentChapter) return;
+
+    indexParagraphs();
+
+    const pending = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+
+    const bmList = bookmarks;
+    applyBookmarkMarkers(bmList, chapterIndex);
+
+    if (pending && pending.para !== null && pending.para !== undefined) {
+      let attempts = 0;
+      const fallbackToPercent = () => {
+        if (pending.pct > 0) {
+          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
+        }
+      };
+      const tryRestore = () => {
+        const el = document.querySelector(`.reader-body [data-p="${pending.para}"]`);
+        if (el) {
+          flashParagraph(pending.para, { scroll: true, keepMs: 6000 });
+          setActiveParaIndex(pending.para);
+        } else if (attempts < 6) {
+          // Images/fonts can still be settling; retry briefly
+          attempts += 1;
+          setTimeout(tryRestore, 120);
+        } else {
+          // Stored index is stale (chapter edited/shorter): fall back to scroll percent
+          fallbackToPercent();
+        }
+      };
+      setTimeout(tryRestore, 160);
+    } else if (pending && pending.pct > 0) {
+      setTimeout(() => {
+        const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo({ top: maxScroll * (pending.pct / 100), behavior: 'smooth' });
+      }, 160);
+    }
+  }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers]);
 
   // Debounced scroll listener for reading position sync
   useEffect(() => {
@@ -356,11 +524,15 @@ export default function App() {
       // Debounce saving progress to cloud
       clearTimeout(scrollTimeoutRef.current);
       scrollTimeoutRef.current = setTimeout(() => {
+        const paraIdx = getActiveParaIndex();
+        setActiveParaIndex(paraIdx);
         saveProgressToCloud(
           currentBook.record ? currentBook.record.id : currentBook.id,
           currentChapter.title,
           chapterIndex,
-          pct
+          pct,
+          currentBook.record ? currentBook.record.title : currentBook.title,
+          paraIdx
         );
       }, 800);
     };
@@ -370,7 +542,7 @@ export default function App() {
       window.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimeoutRef.current);
     };
-  }, [view, currentBook, currentChapter, chapterIndex]);
+  }, [view, currentBook, currentChapter, chapterIndex, getActiveParaIndex]);
 
   // Touch swipe gestures for next/prev chapter
   const handleTouchStart = (e) => {
@@ -417,6 +589,10 @@ export default function App() {
   const filteredBooks = books.filter(b =>
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (b.author && b.author.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const isCurrentParaBookmarked = bookmarks.some(
+    b => b.chapter_index === chapterIndex && b.para_index === activeParaIndex
   );
 
   return (
@@ -521,7 +697,7 @@ export default function App() {
                             </span>
                             <button
                               className="history-resume-btn"
-                              onClick={() => openBook(item.book_id, item.chapter_index, item.scroll_percent)}
+                              onClick={() => openBook(item.book_id, item.chapter_index, item.scroll_percent, item.para_index || 0)}
                             >
                               <PlayCircle size={14} />
                               <span>Đọc tiếp</span>
@@ -567,7 +743,7 @@ export default function App() {
                     <div
                       key={book.id}
                       className="book-card"
-                      onClick={() => openBook(book.id, book.current_chapter || 1, book.scroll_percent || 0)}
+                      onClick={() => openBook(book.id, book.current_chapter || 1, book.scroll_percent || 0, book.para_index || 0)}
                     >
                       <button
                         className="book-delete-btn"
@@ -633,6 +809,20 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className={`btn btn-icon ${isCurrentParaBookmarked ? 'flag-on' : ''}`}
+                  onClick={toggleBookmark}
+                  title={isCurrentParaBookmarked ? 'Bỏ cờ tại vị trí này' : 'Cắm cờ tại vị trí đang đọc'}
+                >
+                  <Flag size={19} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />
+                </button>
+                <button
+                  className="btn btn-icon"
+                  onClick={() => setShowBookmarks(true)}
+                  title="Danh sách vị trí đã đánh dấu"
+                >
+                  <History size={19} />
+                </button>
                 <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương">
                   <List size={20} />
                 </button>
@@ -805,6 +995,57 @@ export default function App() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* BOOKMARKS DRAWER */}
+          <div className={`drawer-overlay ${showBookmarks ? 'open' : ''}`} onClick={() => setShowBookmarks(false)}>
+            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="drawer-header">
+                <h3>Cờ Đánh Dấu ({bookmarks.length})</h3>
+                <button className="btn btn-icon" onClick={() => setShowBookmarks(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {bookmarks.length === 0 ? (
+                <div className="bookmark-empty">
+                  <Flag size={34} />
+                  <p>Chưa có vị trí nào được đánh dấu.</p>
+                  <span>Bấm biểu tượng cờ trên thanh công cụ để lưu lại vị trí đang đọc.</span>
+                </div>
+              ) : (
+                <div className="toc-list">
+                  {bookmarks.map((bm) => (
+                    <div
+                      key={bm.id}
+                      className={`bookmark-item ${bm.chapter_index === chapterIndex ? 'current' : ''}`}
+                      onClick={() => jumpToBookmark(bm)}
+                    >
+                      <div className="bookmark-item-body">
+                        <div className="bookmark-item-title">
+                          <Flag size={13} style={{ flexShrink: 0 }} />
+                          <span>Chương {bm.chapter_index}</span>
+                          <span className="bookmark-item-pct">{Math.round(bm.scroll_percent || 0)}%</span>
+                        </div>
+                        {bm.excerpt && (
+                          <div className="bookmark-item-excerpt">{bm.excerpt}</div>
+                        )}
+                      </div>
+                      <button
+                        className="bookmark-remove-btn"
+                        title="Bỏ cờ này"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeBookmark(bm);
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

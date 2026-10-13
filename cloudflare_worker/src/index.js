@@ -195,7 +195,7 @@ export default {
     // 3. Books: List books
     if (path === '/api/books' && request.method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, added_at FROM books WHERE user_id = ? ORDER BY added_at DESC'
+        'SELECT id, title, author, total_chapters, current_chapter, scroll_percent, para_index, has_cover, added_at FROM books WHERE user_id = ? ORDER BY added_at DESC'
       ).bind(userId).all();
 
       return jsonResponse(results || []);
@@ -331,6 +331,7 @@ export default {
           total_chapters: record.total_chapters,
           current_chapter: record.current_chapter,
           scroll_percent: record.scroll_percent,
+          para_index: record.para_index || 0,
           has_cover: !!record.has_cover,
           added_at: record.added_at
         },
@@ -409,7 +410,7 @@ export default {
     const matchProgress = path.match(/^\/api\/books\/([^\/]+)\/progress$/);
     if (matchProgress && request.method === 'POST') {
       const bookId = matchProgress[1];
-      const { chapter_index, scroll_percent, chapter_title, book_title } = await request.json();
+      const { chapter_index, scroll_percent, chapter_title, book_title, para_index } = await request.json();
 
       let resolvedTitle = book_title;
       if (!resolvedTitle || resolvedTitle === 'Sách') {
@@ -417,20 +418,23 @@ export default {
         resolvedTitle = bRow?.title || 'Sách';
       }
 
+      const paraIdx = Number.isFinite(para_index) ? para_index : 0;
+
       await env.DB.prepare(
-        'UPDATE books SET current_chapter = ?, scroll_percent = ? WHERE id = ? AND user_id = ?'
-      ).bind(chapter_index, scroll_percent, bookId, userId).run();
+        'UPDATE books SET current_chapter = ?, scroll_percent = ?, para_index = ? WHERE id = ? AND user_id = ?'
+      ).bind(chapter_index, scroll_percent, paraIdx, bookId, userId).run();
 
       await env.DB.prepare(`
-        INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO progress (user_id, book_id, book_title, chapter_index, chapter_title, scroll_percent, para_index, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, book_id) DO UPDATE SET
           book_title = excluded.book_title,
           chapter_index = excluded.chapter_index,
           chapter_title = excluded.chapter_title,
           scroll_percent = excluded.scroll_percent,
+          para_index = excluded.para_index,
           updated_at = excluded.updated_at
-      `).bind(userId, bookId, resolvedTitle, chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, Date.now()).run();
+      `).bind(userId, bookId, resolvedTitle, chapter_index, chapter_title || `Chương ${chapter_index}`, scroll_percent, paraIdx, Date.now()).run();
 
       return jsonResponse({ success: true });
     }
@@ -438,7 +442,7 @@ export default {
     // 8. History: Full reading history for multiple books
     if (path === '/api/history' && request.method === 'GET') {
       const { results } = await env.DB.prepare(`
-        SELECT p.book_id, COALESCE(b.title, p.book_title) AS book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.updated_at,
+        SELECT p.book_id, COALESCE(b.title, p.book_title) AS book_title, p.chapter_index, p.chapter_title, p.scroll_percent, p.para_index, p.updated_at,
                b.author, b.total_chapters, b.has_cover
         FROM progress p
         LEFT JOIN books b ON p.book_id = b.id
@@ -448,6 +452,56 @@ export default {
       `).bind(userId).all();
 
       return jsonResponse(results || []);
+    }
+
+    // 8.1 Bookmarks: list / create / delete (Cờ đánh dấu vị trí đọc)
+    const matchBookmarks = path.match(/^\/api\/books\/([^\/]+)\/bookmarks$/);
+    if (matchBookmarks) {
+      const bookId = matchBookmarks[1];
+
+      if (request.method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT id, chapter_index, para_index, scroll_percent, excerpt, note, created_at FROM bookmarks WHERE user_id = ? AND book_id = ? ORDER BY chapter_index ASC, para_index ASC'
+        ).bind(userId, bookId).all();
+
+        return jsonResponse(results || []);
+      }
+
+      if (request.method === 'POST') {
+        const { chapter_index, para_index, scroll_percent, excerpt, note } = await request.json();
+        if (!Number.isFinite(chapter_index) || !Number.isFinite(para_index)) {
+          return errorResponse('Thiếu vị trí đánh dấu');
+        }
+
+        const existing = await env.DB.prepare(
+          'SELECT id FROM bookmarks WHERE user_id = ? AND book_id = ? AND chapter_index = ? AND para_index = ?'
+        ).bind(userId, bookId, chapter_index, para_index).first();
+
+        if (existing) {
+          await env.DB.prepare('DELETE FROM bookmarks WHERE id = ?').bind(existing.id).run();
+          return jsonResponse({ success: true, removed: true, id: existing.id });
+        }
+
+        const bmId = 'bm_' + crypto.randomUUID();
+        await env.DB.prepare(
+          'INSERT INTO bookmarks (id, user_id, book_id, chapter_index, para_index, scroll_percent, excerpt, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(
+          bmId, userId, bookId, chapter_index, para_index,
+          scroll_percent || 0, (excerpt || '').slice(0, 240), (note || '').slice(0, 240), Date.now()
+        ).run();
+
+        return jsonResponse({ success: true, removed: false, id: bmId });
+      }
+
+      if (request.method === 'DELETE') {
+        const { id } = await request.json();
+        if (id) {
+          await env.DB.prepare('DELETE FROM bookmarks WHERE id = ? AND user_id = ?').bind(id, userId).run();
+        } else {
+          await env.DB.prepare('DELETE FROM bookmarks WHERE user_id = ? AND book_id = ?').bind(userId, bookId).run();
+        }
+        return jsonResponse({ success: true });
+      }
     }
 
     // 9. Last Read (Latest active book)
@@ -489,6 +543,7 @@ export default {
       await env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(bookId).run();
       await env.DB.prepare('DELETE FROM book_chunks WHERE book_id = ?').bind(bookId).run();
       await env.DB.prepare('DELETE FROM covers WHERE book_id = ?').bind(bookId).run();
+      await env.DB.prepare('DELETE FROM bookmarks WHERE book_id = ? AND user_id = ?').bind(bookId, userId).run();
       await env.DB.prepare('DELETE FROM progress WHERE book_id = ? AND user_id = ?').bind(bookId, userId).run();
     }
 
@@ -526,11 +581,28 @@ async function initTables(db) {
         total_chapters INTEGER NOT NULL,
         current_chapter INTEGER DEFAULT 1,
         scroll_percent REAL DEFAULT 0,
+        para_index INTEGER DEFAULT 0,
         has_cover INTEGER DEFAULT 0,
         chapters_json TEXT NOT NULL,
         added_at INTEGER NOT NULL
       )
     `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS bookmarks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        book_id TEXT NOT NULL,
+        chapter_index INTEGER NOT NULL,
+        para_index INTEGER NOT NULL,
+        scroll_percent REAL DEFAULT 0,
+        excerpt TEXT,
+        note TEXT,
+        created_at INTEGER NOT NULL
+      )
+    `).run();
+    await db.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_bookmarks_user_book ON bookmarks (user_id, book_id)'
+    ).run();
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS covers (
         book_id TEXT PRIMARY KEY,
@@ -554,6 +626,7 @@ async function initTables(db) {
         chapter_index INTEGER NOT NULL,
         chapter_title TEXT NOT NULL,
         scroll_percent REAL NOT NULL,
+        para_index INTEGER DEFAULT 0,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, book_id)
       )
