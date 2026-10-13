@@ -103,14 +103,20 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS });
     }
-
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Route static frontend requests (SPA) to Cloudflare Assets
+    if (!path.startsWith('/api')) {
+      if (env.ASSETS) {
+        return env.ASSETS.fetch(request);
+      }
+      return new Response('Not Found', { status: 404 });
+    }
 
     if (!env.DB) {
       return errorResponse('Chưa liên kết cơ sở dữ liệu Cloudflare D1', 500);
     }
-
     await initTables(env.DB);
 
     // 1. Auth: Register
