@@ -10,3 +10,8 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "reder_db"
 database_id = "377e84e6-7de8-4f0f-965f-602848fe17b4"
+
+# Bật Cloudflare R2 sau khi kích hoạt dịch vụ R2 trên Cloudflare Dashboard:
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "cuu-u-reader-bucket"

@@ -4,6 +4,8 @@
 interface __BaseEnv_Env {
 	DB: D1Database;
 	ASSETS: Fetcher;
+	BUCKET?: R2Bucket;
+	JWT_SECRET?: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {

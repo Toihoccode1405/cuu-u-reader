@@ -79,13 +79,12 @@ export default function App() {
 
   const lastScrollTopRef = useRef(0);
   const scrollTimeoutRef = useRef(null);
-  const touchStartXRef = useRef(0);
-  const touchStartYRef = useRef(0);
   const pendingRestoreRef = useRef(null);
   const focusParaRef = useRef(-1);
   const focusChapterRef = useRef(-1);
-  const tapRef = useRef({ para: -1, time: 0 });
-  const tapTimerRef = useRef(null);
+  const holdTimerRef = useRef(null);
+  const isLongPressRef = useRef(false);
+  const pointerStartPosRef = useRef(null);
   const shortcutsRef = useRef({});
   const settingsTimeoutRef = useRef(null);
   const lastSavedSettingsRef = useRef(null);
@@ -94,6 +93,11 @@ export default function App() {
     setToast(msg);
     setTimeout(() => setToast(null), ms);
   }, []);
+
+  const getCoverUrl = useCallback((bookId) => {
+    const tokenQuery = cloudToken ? `?token=${encodeURIComponent(cloudToken)}` : '';
+    return getApiUrl(`/api/books/${bookId}/cover${tokenQuery}`);
+  }, [cloudToken]);
 
   // Dòng được coi là "đang nhìn thấy" nếu toàn bộ chiều cao của nó nằm trong
   // vùng đọc, trừ header cố định ở trên và chừa mép dưới.
@@ -504,10 +508,10 @@ export default function App() {
 
   const toggleBookmark = () => flagParagraph(getActiveParaIndex());
 
-  const toggleFocusLine = (paraIdx) => {
+  const toggleFocusLine = (paraIdx, forceHighlight = false) => {
     const target = Number.isFinite(paraIdx) ? paraIdx : getActiveParaIndex();
     const isSamePin = focusChapterRef.current === chapterIndex && focusParaRef.current === target;
-    const next = isSamePin ? -1 : target;
+    const next = (!forceHighlight && isSamePin) ? -1 : target;
     const nextChapter = next >= 0 ? chapterIndex : -1;
 
     focusParaRef.current = next;
@@ -723,62 +727,74 @@ export default function App() {
     };
   }, [view, currentBook, currentChapter, chapterIndex, getActiveParaIndex]);
 
-  // Nhấn 2 lần vào một dòng: ghim sáng dòng đó. Nhấn 1 lần: mở menu thao tác nhanh.
-  // Một cú nhấn đúp của trình duyệt phát ra 2 sự kiện 'click' liên tiếp, nên chỉ
-  // cần đếm click và huỷ bộ đếm của lần nhấn trước -> không bao giờ mở nhầm menu.
-  const handleReaderTap = (e) => {
+  // Nhấn giữ (long press) trên 1 dòng/đoạn: mở menu tiện ích.
+  // Nhấn (1 lần hay nhiều lần): luôn bôi sáng dòng đó.
+  const handlePointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
     const target = e.target.closest('.reader-body [data-p]');
     if (!target) return;
     const paraIdx = parseInt(target.getAttribute('data-p'), 10);
     if (!Number.isFinite(paraIdx)) return;
 
-    const now = Date.now();
-    const prev = tapRef.current;
+    pointerStartPosRef.current = { x: e.clientX, y: e.clientY };
+    isLongPressRef.current = false;
 
-    if (prev.para === paraIdx && now - prev.time < 450) {
-      // Nhấn lần 2 trên cùng dòng -> ghim sáng, huỷ menu đang chờ
-      clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
-      tapRef.current = { para: -1, time: 0 };
-      setSelectedPara(null);
-      toggleFocusLine(paraIdx);
-      return;
-    }
-
-    tapRef.current = { para: paraIdx, time: now };
-    clearTimeout(tapTimerRef.current);
-    tapTimerRef.current = setTimeout(() => {
-      tapTimerRef.current = null;
-      if (tapRef.current.para === paraIdx) {
-        openSelectionMenu(paraIdx);
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (navigator.vibrate) {
+        try { navigator.vibrate(40); } catch (_) {}
       }
+      openSelectionMenu(paraIdx);
     }, 450);
   };
 
-  const handleTouchStart = (e) => {
-    touchStartXRef.current = e.changedTouches[0].screenX;
-    touchStartYRef.current = e.changedTouches[0].screenY;
+  const handlePointerMove = (e) => {
+    if (!pointerStartPosRef.current) return;
+    const dx = Math.abs(e.clientX - pointerStartPosRef.current.x);
+    const dy = Math.abs(e.clientY - pointerStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
   };
 
-  const handleTouchEnd = (e) => {
-    if (view !== 'reader') return;
-    if (showSettings || showTOC || showBookmarks || e.target?.closest?.('input, button, .drawer')) return;
-    const diffX = e.changedTouches[0].screenX - touchStartXRef.current;
-    const diffY = e.changedTouches[0].screenY - touchStartYRef.current;
-    const absX = Math.abs(diffX);
-    const absY = Math.abs(diffY);
-    // Phải là vuốt NGANG rõ ràng: đủ xa VÀ ngang phải trội hơn dọc ít nhất gấp
-    // đôi. Trước đây chỉ cần |X| > 70 và |Y| < 50 nên một cú vuốt hơi chéo
-    // (ngang 80, dọc 45) vẫn bị tính là chuyển chương - rất dễ nhảy chương
-    // ngoài ý muốn khi đang cuộn dọc.
-    if (absX > 70 && absX > absY * 2) {
-      const bId = currentBook.record ? currentBook.record.id : currentBook.id;
-      if (diffX < 0 && currentChapter?.next_index) {
-        loadChapter(bId, currentChapter.next_index);
-      } else if (diffX > 0 && currentChapter?.prev_index) {
-        loadChapter(bId, currentChapter.prev_index);
-      }
+  const handlePointerUp = () => {
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    pointerStartPosRef.current = null;
+  };
+
+  const handlePointerCancel = () => {
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    pointerStartPosRef.current = null;
+  };
+
+  const handleContextMenu = (e) => {
+    const target = e.target.closest('.reader-body [data-p]');
+    if (!target) return;
+    const paraIdx = parseInt(target.getAttribute('data-p'), 10);
+    if (!Number.isFinite(paraIdx)) return;
+
+    e.preventDefault();
+    clearTimeout(holdTimerRef.current);
+    isLongPressRef.current = true;
+    openSelectionMenu(paraIdx);
+  };
+
+  const handleReaderTap = (e) => {
+    if (isLongPressRef.current) {
+      isLongPressRef.current = false;
+      return;
     }
+    const target = e.target.closest('.reader-body [data-p]');
+    if (!target) return;
+    const paraIdx = parseInt(target.getAttribute('data-p'), 10);
+    if (!Number.isFinite(paraIdx)) return;
+
+    // Ấn 1 lần hay nhiều lần thì vẫn là bôi sáng
+    toggleFocusLine(paraIdx, true);
   };
 
   const toggleFullscreen = () => {
@@ -895,7 +911,7 @@ export default function App() {
   );
 
   return (
-    <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div>
       <XhSprite />
       {view === 'library' && (
         <>
@@ -966,7 +982,7 @@ export default function App() {
                     <div key={item.book_id} className="history-card">
                       {item.has_cover ? (
                         <img
-                        src={getApiUrl(`/api/books/${item.book_id}/cover`)}
+                          src={getCoverUrl(item.book_id)}
                           alt={item.book_title}
                           className="history-cover"
                           onError={(e) => { e.target.style.display = 'none'; }}
@@ -1063,7 +1079,7 @@ export default function App() {
                       <div className="book-cover-container">
                         {book.has_cover ? (
                           <img
-                          src={getApiUrl(`/api/books/${book.id}/cover`)}
+                            src={getCoverUrl(book.id)}
                             alt={book.title}
                             className="book-cover-img"
                             onError={(e) => { e.target.style.display = 'none'; }}
@@ -1166,6 +1182,11 @@ export default function App() {
             <div
               className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
               onClick={handleReaderTap}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
+              onContextMenu={handleContextMenu}
               dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
             />
 
