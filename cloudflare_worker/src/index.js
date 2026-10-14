@@ -126,6 +126,9 @@ export default {
       await initTables(env.DB);
     // 1. Auth: Register
     if (path === '/api/auth/register' && request.method === 'POST') {
+      if (env.ALLOW_REGISTRATION !== 'true') {
+        return errorResponse('Hệ thống tạm thời đóng đăng ký tài khoản mới.', 403);
+      }
       const { username, password } = await request.json();
       if (!username || !password || username.length < 3 || password.length < 4) {
         return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 4 ký tự');
