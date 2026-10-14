@@ -495,11 +495,16 @@ body {
   background: rgba(194, 89, 30, 0.08);
   color: var(--accent-color);
 }
-.book-delete-btn {
+.book-card-actions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 10;
+  display: flex;
+  gap: 6px;
+}
+.book-delete-btn,
+.book-download-btn {
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   border: none;
@@ -512,11 +517,21 @@ body {
   opacity: 0;
   transition: opacity 0.2s, background 0.2s;
 }
-.book-card:hover .book-delete-btn {
+.book-card:hover .book-delete-btn,
+.book-card:hover .book-download-btn {
   opacity: 1;
 }
 .book-delete-btn:hover {
   background: #ef4444;
+}
+.book-download-btn:hover {
+  background: var(--accent-color, #c2591e);
+}
+@media (hover: none), (pointer: coarse) {
+  .book-delete-btn,
+  .book-download-btn {
+    opacity: 0.85;
+  }
 }
 .book-info {
   padding: 0.85rem 1rem;

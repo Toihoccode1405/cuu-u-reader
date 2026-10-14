@@ -293,7 +293,7 @@ export default {
             hasCover = 1;
           }
         }
-        if (!hasCover && metadata.coverBase64.length < 80000) {
+        if (!hasCover && metadata.coverBase64.length < 1000000) {
           await env.DB.prepare('INSERT OR REPLACE INTO covers (book_id, cover_data) VALUES (?, ?)')
             .bind(bookId, metadata.coverBase64)
             .run();
@@ -1039,6 +1039,10 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
   const coverMeta = opfXml.match(/<meta\s+[^>]*name=['"]cover['"][^>]*content=['"]([^'"]+)['"]/i);
   if (coverMeta && manifest[coverMeta[1]]) coverHref = manifest[coverMeta[1]];
   if (!coverHref) {
+    if (manifest['cover-image']) coverHref = manifest['cover-image'];
+    else if (manifest['cover']) coverHref = manifest['cover'];
+  }
+  if (!coverHref) {
     for (const [id, href] of Object.entries(manifest)) {
       if ((id.toLowerCase().includes('cover') || href.toLowerCase().includes('cover')) && /\.(jpe?g|png|webp)$/i.test(href)) {
         coverHref = href;
@@ -1050,7 +1054,7 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
     const coverFile = findZipFile(zip, opfDir ? `${opfDir}/${coverHref}` : coverHref);
     if (coverFile) {
       const b64 = await coverFile.async('base64');
-      const ext = coverHref.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+      const ext = coverHref.toLowerCase().endsWith('.png') ? 'png' : (coverHref.toLowerCase().endsWith('.webp') ? 'webp' : 'jpeg');
       coverBase64 = `data:image/${ext};base64,${b64}`;
     }
   }
