@@ -25,7 +25,8 @@ export default function App() {
   const [books, setBooks] = useState([]);
   const [history, setHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [topProgress, setTopProgress] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Active Reading State
@@ -88,6 +89,36 @@ export default function App() {
   const shortcutsRef = useRef({});
   const settingsTimeoutRef = useRef(null);
   const lastSavedSettingsRef = useRef(null);
+  const progressTimerRef = useRef(null);
+
+  const startTopProgress = useCallback(() => {
+    clearInterval(progressTimerRef.current);
+    setTopProgress(18);
+    progressTimerRef.current = setInterval(() => {
+      setTopProgress((prev) => {
+        if (prev === null) return 18;
+        if (prev >= 88) return prev;
+        const diff = 88 - prev;
+        const step = Math.max(1, Math.round(diff * 0.15));
+        return prev + step;
+      });
+    }, 180);
+  }, []);
+
+  const completeTopProgress = useCallback(() => {
+    clearInterval(progressTimerRef.current);
+    progressTimerRef.current = null;
+    setTopProgress(100);
+    setTimeout(() => {
+      setTopProgress(null);
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearInterval(progressTimerRef.current);
+    };
+  }, []);
 
   const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
@@ -143,7 +174,7 @@ export default function App() {
 
   const loadUserData = useCallback(async (token) => {
     if (!token) return;
-    setLoading(true);
+    startTopProgress();
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
 
@@ -180,9 +211,9 @@ export default function App() {
     } catch (e) {
       showToast('Không thể kết nối đến máy chủ. Vui lòng kiểm tra mạng.');
     } finally {
-      setLoading(false);
+      completeTopProgress();
     }
-  }, [showToast]);
+  }, [showToast, startTopProgress, completeTopProgress]);
 
   // Auto load on startup if logged in
   useEffect(() => {
@@ -233,42 +264,78 @@ export default function App() {
   // BOOK MANAGEMENT (UPLOAD & DELETE)
   // ---------------------------------------------------------------------------
 
-  const handleUpload = async (file) => {
+  const handleUpload = (file) => {
     if (!file || !file.name.toLowerCase().endsWith('.epub')) {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
     }
-    showToast(`Đang tải sách lên: ${file.name}...`);
-    setLoading(true);
+
+    startTopProgress();
+    setUploadProgress({
+      fileName: file.name,
+      percent: 0,
+      loaded: 0,
+      total: file.size,
+      statusText: 'Đang chuẩn bị tải lên...'
+    });
 
     const formData = new FormData();
     formData.append('file', file);
 
-    try {
-      const res = await fetch(getApiUrl('/api/books/upload'), {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${cloudToken}` },
-        body: formData
-      });
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', getApiUrl('/api/books/upload'));
+    xhr.setRequestHeader('Authorization', `Bearer ${cloudToken}`);
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        const pct = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        setUploadProgress({
+          fileName: file.name,
+          percent: pct,
+          loaded: e.loaded,
+          total: e.total,
+          statusText: pct >= 99 ? 'Đang phân tích cấu trúc EPUB trên máy chủ...' : `Đang tải lên: ${pct}%`
+        });
       }
+    };
 
-      const newBook = await res.json();
-      showToast(`Đã thêm thành công: ${newBook.title}!`);
-      await loadUserData(cloudToken);
-    } catch (e) {
-      alert(`Lỗi tải sách: ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
+    xhr.onload = async () => {
+      completeTopProgress();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress({
+          fileName: file.name,
+          percent: 100,
+          loaded: file.size,
+          total: file.size,
+          statusText: 'Tải lên hoàn tất!'
+        });
+        try {
+          const newBook = JSON.parse(xhr.responseText);
+          showToast(`Đã thêm thành công: ${newBook.title}!`);
+        } catch {
+          showToast('Đã thêm sách thành công!');
+        }
+        setTimeout(() => setUploadProgress(null), 600);
+        await loadUserData(cloudToken);
+      } else {
+        setUploadProgress(null);
+        alert(`Lỗi tải sách: ${xhr.responseText || ('Mã lỗi ' + xhr.status)}`);
+      }
+    };
+
+    xhr.onerror = () => {
+      completeTopProgress();
+      setUploadProgress(null);
+      alert('Lỗi kết nối khi tải sách lên máy chủ');
+    };
+
+    xhr.send(formData);
   };
 
   const handleDeleteBook = async (book, e) => {
     e.stopPropagation();
     if (window.confirm(`Bạn có chắc muốn xóa "${book.title}" khỏi thư các?`)) {
+      startTopProgress();
       try {
         const res = await fetch(getApiUrl(`/api/books/${book.id}`), {
           method: 'DELETE',
@@ -280,6 +347,8 @@ export default function App() {
         }
       } catch (e) {
         showToast('Lỗi khi xóa sách');
+      } finally {
+        completeTopProgress();
       }
     }
   };
@@ -288,6 +357,7 @@ export default function App() {
     if (e) e.stopPropagation();
     const bookId = book.id || book.record?.id;
     const title = book.title || book.record?.title || 'cuu-u-sach';
+    startTopProgress();
     try {
       showToast(`Đang chuẩn bị tải: ${title}...`);
       const tokenQuery = cloudToken ? `?token=${encodeURIComponent(cloudToken)}` : '';
@@ -307,6 +377,8 @@ export default function App() {
       showToast(`Đã tải xong: ${title}`);
     } catch (err) {
       showToast(err.message || 'Lỗi khi tải file sách');
+    } finally {
+      completeTopProgress();
     }
   };
 
@@ -316,7 +388,7 @@ export default function App() {
 
   const openBook = async (bookId, targetChapter = 1, restoreScroll = 0, restorePara = null) => {
     showToast('Đang mở sách...');
-    setLoading(true);
+    startTopProgress();
 
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}`), {
@@ -342,11 +414,12 @@ export default function App() {
     } catch (e) {
       showToast(e.message);
     } finally {
-      setLoading(false);
+      completeTopProgress();
     }
   };
 
   const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null, restoreFocus = null, restoreFocusChapter = null) => {
+    startTopProgress();
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
         headers: { 'Authorization': `Bearer ${cloudToken}` }
@@ -370,6 +443,8 @@ export default function App() {
       saveProgressToCloud(bookId, data.title, idx, restoreScroll || 0, bTitle, restorePara || 0);
     } catch (e) {
       showToast(e.message);
+    } finally {
+      completeTopProgress();
     }
   };
 
@@ -1638,17 +1713,51 @@ export default function App() {
         </div>
       )}
 
-      {/* LOADING OVERLAY */}
-      {loading && (
+      {/* GLOBAL TOP ACTION PROGRESS BAR */}
+      {topProgress !== null && (
+        <div
+          className="global-top-progress-bar"
+          style={{
+            width: `${topProgress}%`,
+            opacity: topProgress === 100 ? 0 : 1
+          }}
+        />
+      )}
+
+      {/* UPLOAD PROGRESS OVERLAY */}
+      {uploadProgress && (
         <div className="loading-overlay">
-          <div className="loading-card">
-            <div className="spinner"></div>
-            <p style={{ marginTop: 14, fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
-              Đang xử lý và tải sách lên...
+          <div className="upload-progress-card">
+            <div className="upload-icon-pulse">
+              <UploadCloud size={30} />
+            </div>
+            <h4 className="upload-title">Đang tải sách lên</h4>
+            <p className="upload-filename" title={uploadProgress.fileName}>
+              {uploadProgress.fileName}
             </p>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Vui lòng đợi trong giây lát
-            </span>
+
+            <div className="upload-bar-track">
+              <div
+                className="upload-bar-fill"
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
+            </div>
+
+            <div className="upload-stats">
+              <span className="upload-percent">{uploadProgress.percent}%</span>
+              {uploadProgress.total > 0 && (
+                <span className="upload-bytes">
+                  {(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} MB / {(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB
+                </span>
+              )}
+            </div>
+
+            <div className="upload-status-row">
+              {uploadProgress.percent >= 99 && uploadProgress.percent < 100 && (
+                <div className="spinner-sm" />
+              )}
+              <span className="upload-status-text">{uploadProgress.statusText}</span>
+            </div>
           </div>
         </div>
       )}
