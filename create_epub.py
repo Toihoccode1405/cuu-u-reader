@@ -71,14 +71,37 @@ p {
         spine_items = []
         ncx_navpoints = []
 
-        # Optional cover image
+        # Optional cover image and cover page
         if cover_image and os.path.exists(cover_image):
             ext = os.path.splitext(cover_image)[1].lower()
-            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/png" if ext == ".png" else "image/webp")
             with open(cover_image, "rb") as cf:
                 z.writestr("OEBPS/cover" + ext, cf.read())
             manifest_items.append(f'<item id="cover-image" href="cover{ext}" media-type="{mime}"/>')
 
+            cover_xhtml = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="vi" lang="vi">
+<head>
+  <title>Bìa sách</title>
+  <style type="text/css">
+    body {{ margin: 0; padding: 0; text-align: center; background-color: #111; }}
+    img {{ max-width: 100%; max-height: 100vh; height: auto; width: auto; object-fit: contain; }}
+  </style>
+</head>
+<body>
+  <div style="text-align: center;">
+    <img src="cover{ext}" alt="Bìa sách"/>
+  </div>
+</body>
+</html>"""
+            z.writestr("OEBPS/cover.xhtml", cover_xhtml)
+            manifest_items.append('<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>')
+            spine_items.append('<itemref idref="cover-page"/>')
+            ncx_navpoints.append("""  <navPoint id="np_cover" playOrder="0">
+    <navLabel><text>Bìa sách</text></navLabel>
+    <content src="cover.xhtml"/>
+  </navPoint>""")
         # 4. Generate XHTML for each chapter
         for i, (ch_title, ch_body) in enumerate(chapters, 1):
             file_name = f"chapter_{i:04d}.xhtml"
@@ -131,6 +154,9 @@ p {
         # 6. Package Metadata & Spine (content.opf)
         safe_author = html.escape(author)
         cover_meta = '<meta name="cover" content="cover-image"/>' if cover_image and os.path.exists(cover_image) else ""
+        guide_xml = """  <guide>
+    <reference type="cover" title="Bìa sách" href="cover.xhtml"/>
+  </guide>""" if cover_image and os.path.exists(cover_image) else ""
 
         opf_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookID" version="2.0">
@@ -147,6 +173,7 @@ p {
   <spine toc="ncx">
     {"    ".join(spine_items)}
   </spine>
+  {guide_xml}
 </package>"""
         z.writestr("OEBPS/content.opf", opf_xml)
 

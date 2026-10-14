@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
-  PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy
+  PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
@@ -281,6 +281,32 @@ export default function App() {
       } catch (e) {
         showToast('Lỗi khi xóa sách');
       }
+    }
+  };
+
+  const handleDownloadBook = async (book, e) => {
+    if (e) e.stopPropagation();
+    const bookId = book.id || book.record?.id;
+    const title = book.title || book.record?.title || 'cuu-u-sach';
+    try {
+      showToast(`Đang chuẩn bị tải: ${title}...`);
+      const tokenQuery = cloudToken ? `?token=${encodeURIComponent(cloudToken)}` : '';
+      const url = getApiUrl(`/api/books/${bookId}/file${tokenQuery}`);
+      const res = await fetch(url, {
+        headers: cloudToken ? { 'Authorization': `Bearer ${cloudToken}` } : {}
+      });
+      if (!res.ok) throw new Error('Không thể tải file sách từ máy chủ');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${title}.epub`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      showToast(`Đã tải xong: ${title}`);
+    } catch (err) {
+      showToast(err.message || 'Lỗi khi tải file sách');
     }
   };
 
@@ -1069,13 +1095,22 @@ export default function App() {
                       className="book-card"
                       onClick={() => openBook(book.id, book.current_chapter || 1, book.scroll_percent || 0, book.para_index || 0)}
                     >
-                      <button
-                        className="book-delete-btn"
-                        title="Xóa sách"
-                        onClick={(e) => handleDeleteBook(book, e)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="book-card-actions">
+                        <button
+                          className="book-download-btn"
+                          title="Tải file EPUB về máy"
+                          onClick={(e) => handleDownloadBook(book, e)}
+                        >
+                          <Download size={15} />
+                        </button>
+                        <button
+                          className="book-delete-btn"
+                          title="Xóa sách"
+                          onClick={(e) => handleDeleteBook(book, e)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
 
                       <div className="book-cover-container">
                         {book.has_cover ? (
@@ -1166,6 +1201,13 @@ export default function App() {
                 </button>
                 <button className="btn btn-icon hide-on-mobile" onClick={() => setShowShortcuts(true)} title="Phím tắt (?)">
                   <Keyboard size={19} />
+                </button>
+                <button
+                  className="btn btn-icon"
+                  onClick={(e) => handleDownloadBook(currentBook, e)}
+                  title="Tải file EPUB về máy"
+                >
+                  <Download size={19} />
                 </button>
                 <button className="btn btn-icon hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
                   {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}

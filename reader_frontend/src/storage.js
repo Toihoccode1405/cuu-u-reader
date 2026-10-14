@@ -352,7 +352,10 @@ export async function parseEpubClient(file) {
     coverHref = manifest[coverMeta[1]];
   }
   if (!coverHref) {
-    // Search for item with id or href containing 'cover'
+    if (manifest['cover-image']) coverHref = manifest['cover-image'];
+    else if (manifest['cover']) coverHref = manifest['cover'];
+  }
+  if (!coverHref) {
     for (const [id, href] of Object.entries(manifest)) {
       if ((id.toLowerCase().includes('cover') || href.toLowerCase().includes('cover')) && /\.(jpe?g|png|webp)$/i.test(href)) {
         coverHref = href;
@@ -367,7 +370,7 @@ export async function parseEpubClient(file) {
     if (coverFile) {
       try {
         const coverBase64 = await coverFile.async('base64');
-        const ext = coverHref.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+        const ext = coverHref.toLowerCase().endsWith('.png') ? 'png' : (coverHref.toLowerCase().endsWith('.webp') ? 'webp' : 'jpeg');
         coverData = `data:image/${ext};base64,${coverBase64}`;
       } catch (e) {}
     }
