@@ -1849,6 +1849,110 @@ input[type="range"] {
   to { transform: rotate(360deg); }
 }
 
+/* GLOBAL TOP PROGRESS BAR (Process bar cho các thao tác trên web) */
+.global-top-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-color), #f59e0b, #ef4444);
+  z-index: 999999;
+  transition: width 0.2s cubic-bezier(0.1, 0.5, 0.1, 1), opacity 0.3s ease;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+  pointer-events: none;
+}
+
+/* UPLOAD PROGRESS MODAL CARD */
+.upload-progress-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  padding: 2rem 2.2rem;
+  border-radius: 18px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 90%;
+  max-width: 420px;
+}
+.upload-icon-pulse {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--accent-light, rgba(180, 83, 9, 0.12));
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  animation: pulse-ring 2s infinite ease-in-out;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.4); }
+  70% { transform: scale(1.04); box-shadow: 0 0 0 12px rgba(217, 119, 6, 0); }
+  100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+}
+.upload-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.35rem;
+}
+.upload-filename {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 1.25rem;
+}
+.upload-bar-track {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-color);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--border-color);
+}
+.upload-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color), #f59e0b);
+  border-radius: 4px;
+  transition: width 0.15s ease-out;
+}
+.upload-stats {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+.upload-percent {
+  font-weight: 700;
+  color: var(--accent-color);
+}
+.upload-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
 /* READING PARAGRAPH HIGHLIGHT ON RESUME (exact paragraph) */
 .reader-body [data-p] {
   position: relative;
