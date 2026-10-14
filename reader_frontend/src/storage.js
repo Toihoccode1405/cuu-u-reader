@@ -451,17 +451,39 @@ export async function parseEpubClient(file) {
 function cleanChapterContent(raw) {
   if (!raw) return '<p>Nội dung trống.</p>';
 
-  // Extract body contents only
   let bodyContent = raw;
   const bodyM = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyM) {
     bodyContent = bodyM[1];
   }
 
-  // Strip script, style, iframe, form tags
-  bodyContent = bodyContent.replace(/<script[\s\S]*?<\/script>/gi, '');
-  bodyContent = bodyContent.replace(/<style[\s\S]*?<\/style>/gi, '');
-  bodyContent = bodyContent.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+  bodyContent = bodyContent
+    .replace(/<(script|style|iframe|object|embed|svg|math|form|base|meta|link|applet)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|svg|math|form|base|meta|link|applet)\b[^>]*>/gi, '');
 
-  return bodyContent;
+  const plain = (s) => (s || '')
+    .replace(/\son\w+\s*=\s*(['"]).*?\1/gis, '')
+    .replace(/\son\w+\s*=\s*[^ >]+/gis, '')
+    .replace(/(href|src)\s*=\s*(['"])\s*(javascript|vbscript|data):.*?\2/gis, '')
+    .replace(/<(?!\/?(i|em|b|strong|u|br)\b)[^>]*>/gi, '')
+    .replace(/<(i|em|b|strong|u)\b[^>]*>/gi, '<$1>')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const paragraphs = [];
+  const blockRe = /<(p|div|h1|h2|h3|h4|h5|h6)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m;
+  while ((m = blockRe.exec(bodyContent)) !== null) {
+    const text = plain(m[2]);
+    if (text.length > 0) paragraphs.push(text);
+  }
+
+  if (paragraphs.length === 0) {
+    bodyContent.split(/<br\s*\/?>/gi).forEach(chunk => {
+      const text = plain(chunk);
+      if (text.length > 0) paragraphs.push(text);
+    });
+  }
+
+  return paragraphs.map(t => `<p>${t}</p>`).join('\n') || '<p>Nội dung trống.</p>';
 }
