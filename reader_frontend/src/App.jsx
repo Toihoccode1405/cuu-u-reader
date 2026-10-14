@@ -87,6 +87,8 @@ export default function App() {
   const tapRef = useRef({ para: -1, time: 0 });
   const tapTimerRef = useRef(null);
   const shortcutsRef = useRef({});
+  const settingsTimeoutRef = useRef(null);
+  const lastSavedSettingsRef = useRef(null);
 
   const showToast = useCallback((msg, ms = 3000) => {
     setToast(msg);
@@ -103,7 +105,7 @@ export default function App() {
     return r.top >= topLimit && r.bottom <= bottomLimit;
   }, []);
 
-  // Sync settings with DOM & localStorage
+  // Sync settings with DOM & localStorage & Cloudflare D1
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
@@ -111,7 +113,25 @@ export default function App() {
     document.documentElement.style.setProperty('--reader-letter-spacing', `${settings.letterSpacing}px`);
     document.documentElement.style.setProperty('--reader-max-width', `${settings.maxWidth}px`);
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
-  }, [settings]);
+
+    const serialized = JSON.stringify(settings);
+    if (cloudToken && serialized !== lastSavedSettingsRef.current) {
+      clearTimeout(settingsTimeoutRef.current);
+      settingsTimeoutRef.current = setTimeout(async () => {
+        try {
+          await fetch(getApiUrl('/api/settings'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${cloudToken}`
+            },
+            body: JSON.stringify({ settings })
+          });
+          lastSavedSettingsRef.current = serialized;
+        } catch (e) {}
+      }, 600);
+    }
+  }, [settings, cloudToken]);
 
   // ---------------------------------------------------------------------------
   // DATA LOADING (AUTO SYNC FROM CLOUDFLARE D1)
@@ -139,6 +159,19 @@ export default function App() {
       if (histRes.ok) {
         const histData = await histRes.json();
         setHistory(histData);
+      }
+
+      // 3. Fetch Reader Settings from Cloud
+      const settingsRes = await fetch(getApiUrl('/api/settings'), { headers });
+      if (settingsRes.ok) {
+        const { settings: cloudSettings } = await settingsRes.json();
+        if (cloudSettings && typeof cloudSettings === 'object' && Object.keys(cloudSettings).length > 0) {
+          const themeMap = { paper: 'white', dark: 'slate' };
+          if (themeMap[cloudSettings.theme]) cloudSettings.theme = themeMap[cloudSettings.theme];
+          if (cloudSettings.font === 'font-vietnam') cloudSettings.font = 'font-be-vietnam';
+          lastSavedSettingsRef.current = JSON.stringify(cloudSettings);
+          setSettings(prev => ({ ...prev, ...cloudSettings }));
+        }
       }
     } catch (e) {
       showToast('Không thể kết nối đến máy chủ. Vui lòng kiểm tra mạng.');
@@ -729,6 +762,7 @@ export default function App() {
 
   const handleTouchEnd = (e) => {
     if (view !== 'reader') return;
+    if (showSettings || showTOC || showBookmarks || e.target?.closest?.('input, button, .drawer')) return;
     const diffX = e.changedTouches[0].screenX - touchStartXRef.current;
     const diffY = e.changedTouches[0].screenY - touchStartYRef.current;
     const absX = Math.abs(diffX);

@@ -186,7 +186,7 @@ export default {
     // Allow public access to cover images (HTML <img> tag cannot send Authorization headers)
     const isCoverRequest = /^\/api\/books\/[^\/]+\/cover$/.test(path);
 
-    if (!isCoverRequest && !userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read'))) {
+    if (!isCoverRequest && !userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read') || path.startsWith('/api/settings'))) {
       return errorResponse('Chưa đăng nhập. Vui lòng đăng nhập để sử dụng.', 401);
     }
 
@@ -529,6 +529,37 @@ export default {
 
       return jsonResponse(last || null);
     }
+    // 10. Settings: Get & Update Reader Settings
+    if (path === '/api/settings') {
+      if (request.method === 'GET') {
+        const row = await env.DB.prepare(
+          'SELECT settings_json FROM user_settings WHERE user_id = ?'
+        ).bind(userId).first();
+        let settings = null;
+        if (row && row.settings_json) {
+          try {
+            settings = JSON.parse(row.settings_json);
+          } catch (e) {}
+        }
+        return jsonResponse({ settings });
+      }
+
+      if (request.method === 'POST') {
+        const body = await request.json();
+        const settings = body?.settings;
+        if (!settings || typeof settings !== 'object') {
+          return errorResponse('Cài đặt không hợp lệ');
+        }
+        await env.DB.prepare(`
+          INSERT INTO user_settings (user_id, settings_json, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
+        `).bind(userId, JSON.stringify(settings), Date.now()).run();
+
+        return jsonResponse({ success: true });
+      }
+    }
+
     // 9. Cover Image Stream from D1
     const matchCover = path.match(/^\/api\/books\/([^\/]+)\/cover$/);
     if (matchCover && request.method === 'GET') {
@@ -648,6 +679,13 @@ async function initTables(db) {
         PRIMARY KEY (user_id, book_id)
       )
     `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT PRIMARY KEY,
+        settings_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
     tablesInitialized = true;
   } catch (e) {
     console.error('initTables error:', e);
@@ -753,6 +791,7 @@ async function extractChapterContent(zip, toc, chapterIdx, targetCh) {
   // Nay: không có anchor => chương bắt đầu từ đầu file, và vẫn phải cắt tại
   // anchor của chương kế tiếp trong cùng file.
   const found = anchor ? anchorOffset(raw, anchor) : 0;
+  if (anchor && found < 0) return cleanXhtml(raw);
   const start = found >= 0 ? found : 0;
 
   // Nearest following chapter anchor inside the same file closes this chapter.
