@@ -985,6 +985,7 @@ export default function App() {
                           src={getCoverUrl(item.book_id)}
                           alt={item.book_title}
                           className="history-cover"
+                          referrerPolicy="no-referrer"
                           onError={(e) => { e.target.style.display = 'none'; }}
                         />
                       ) : (
@@ -1082,6 +1083,7 @@ export default function App() {
                             src={getCoverUrl(book.id)}
                             alt={book.title}
                             className="book-cover-img"
+                            referrerPolicy="no-referrer"
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (

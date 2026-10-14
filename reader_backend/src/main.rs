@@ -142,11 +142,18 @@ async fn list_books(State(state): State<AppState>) -> Json<Vec<BookRecord>> {
     let books = state.books.lock().clone();
     Json(books)
 }
+fn is_valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 
 async fn get_book_detail(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<BookDetail>, (StatusCode, String)> {
+    if !is_valid_id(&id) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid book ID".to_string()));
+    }
     let record = {
         let books = state.books.lock();
         books
@@ -169,6 +176,9 @@ async fn get_book_cover(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Response {
+    if !is_valid_id(&id) {
+        return (StatusCode::BAD_REQUEST, "Invalid book ID").into_response();
+    }
     let cover_jpg = state.data_dir.join("covers").join(format!("{}.jpg", id));
     let cover_png = state.data_dir.join("covers").join(format!("{}.png", id));
 
@@ -251,6 +261,9 @@ async fn update_progress(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<UpdateProgressRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_valid_id(&id) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid book ID".to_string()));
+    }
     {
         let mut books = state.books.lock();
         if let Some(book) = books.iter_mut().find(|b| b.id == id) {
@@ -268,6 +281,9 @@ async fn get_chapter_content(
     State(state): State<AppState>,
     AxumPath((id, index)): AxumPath<(String, usize)>,
 ) -> Result<Json<ChapterContentResponse>, (StatusCode, String)> {
+    if !is_valid_id(&id) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid book ID".to_string()));
+    }
     let epub_path = state.data_dir.join("epubs").join(format!("{}.epub", id));
     if !epub_path.exists() {
         return Err((StatusCode::NOT_FOUND, "Book file missing".to_string()));
@@ -306,6 +322,9 @@ async fn delete_book(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_valid_id(&id) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid book ID".to_string()));
+    }
     {
         let mut books = state.books.lock();
         if let Some(pos) = books.iter().position(|b| b.id == id) {
@@ -325,28 +344,53 @@ async fn delete_book(
 }
 
 fn clean_chapter_html(raw: &str) -> String {
-    // Extract everything between <body> and </body> if present
-    if let Some(start) = raw.find("<body") {
+    let lower = raw.to_lowercase();
+    let content = if let Some(start) = lower.find("<body") {
         if let Some(tag_end) = raw[start..].find('>') {
             let body_start = start + tag_end + 1;
-            if let Some(body_end) = raw.rfind("</body>") {
-                let inner = &raw[body_start..body_end];
-                return strip_scripts(inner);
+            if let Some(body_end) = lower.rfind("</body>") {
+                if body_start < body_end {
+                    &raw[body_start..body_end]
+                } else {
+                    raw
+                }
+            } else {
+                raw
+            }
+        } else {
+            raw
+        }
+    } else {
+        raw
+    };
+
+    sanitize_html(content)
+}
+
+fn sanitize_html(s: &str) -> String {
+    let mut result = s.to_string();
+    let dangerous_tags = [
+        "script", "style", "iframe", "object", "embed", "svg", "math", "form", "base", "meta", "link",
+    ];
+
+    for tag in dangerous_tags {
+        let open_tag = format!("<{}", tag);
+        let close_tag = format!("</{}>", tag);
+        loop {
+            let lower = result.to_lowercase();
+            if let Some(start) = lower.find(&open_tag) {
+                if let Some(end) = lower[start..].find(&close_tag) {
+                    result.replace_range(start..start + end + close_tag.len(), "");
+                } else if let Some(tag_end) = lower[start..].find('>') {
+                    result.replace_range(start..start + tag_end + 1, "");
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
     }
-    strip_scripts(raw)
-}
 
-fn strip_scripts(s: &str) -> String {
-    // Simple script removal
-    let mut result = s.to_string();
-    while let Some(start) = result.find("<script") {
-        if let Some(end) = result[start..].find("</script>") {
-            result.replace_range(start..start + end + 9, "");
-        } else {
-            break;
-        }
-    }
     result
 }

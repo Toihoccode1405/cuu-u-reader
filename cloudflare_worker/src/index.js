@@ -4,6 +4,9 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
 };
 
 function jsonResponse(data, status = 200) {
@@ -54,6 +57,32 @@ function getJwtSecret(env) {
   return env?.JWT_SECRET || DEFAULT_JWT_SECRET;
 }
 
+const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const failedLogins = new Map(); // username -> { count: number, resetAt: number }
+
+function checkLoginRateLimit(username) {
+  const now = Date.now();
+  const record = failedLogins.get(username);
+  if (record && now < record.resetAt && record.count >= 5) {
+    return false;
+  }
+  return true;
+}
+
+function recordLoginFailure(username) {
+  const now = Date.now();
+  const record = failedLogins.get(username);
+  if (!record || now >= record.resetAt) {
+    failedLogins.set(username, { count: 1, resetAt: now + 5 * 60 * 1000 });
+  } else {
+    record.count += 1;
+  }
+}
+
+function clearLoginFailure(username) {
+  failedLogins.delete(username);
+}
+
 async function generateToken(userId, username, secret = DEFAULT_JWT_SECRET) {
   const payload = `${userId}:${username}:${Date.now()}`;
   const enc = new TextEncoder();
@@ -77,6 +106,15 @@ async function verifyToken(token, secret = DEFAULT_JWT_SECRET) {
     const parts = raw.split(':');
     if (parts.length !== 4) return null;
     const [userId, username, ts, sigHex] = parts;
+    const timestamp = parseInt(ts, 10);
+    if (!Number.isFinite(timestamp)) return null;
+
+    // Check token expiration (30 days) and prevent future timestamps
+    const now = Date.now();
+    if (now - timestamp > MAX_TOKEN_AGE_MS || timestamp > now + 60000) {
+      return null;
+    }
+
     const payload = `${userId}:${username}:${ts}`;
 
     const enc = new TextEncoder();
@@ -161,11 +199,17 @@ export default {
     // 2. Auth: Login
     if (path === '/api/auth/login' && request.method === 'POST') {
       const { username, password } = await request.json();
+      const cleanUser = username?.toLowerCase().trim();
+      if (!cleanUser || !checkLoginRateLimit(cleanUser)) {
+        return errorResponse('Đăng nhập sai quá 5 lần liên tiếp. Vui lòng thử lại sau 5 phút.', 429);
+      }
+
       const user = await env.DB.prepare('SELECT * FROM users WHERE username = ?')
-        .bind(username.toLowerCase().trim())
+        .bind(cleanUser)
         .first();
 
       if (!user) {
+        recordLoginFailure(cleanUser);
         return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
       }
 
@@ -173,9 +217,11 @@ export default {
       const hash = await hashPassword(password, salt);
 
       if (hash !== user.password_hash) {
+        recordLoginFailure(cleanUser);
         return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
       }
 
+      clearLoginFailure(cleanUser);
       const jwtSecret = getJwtSecret(env);
       const token = await generateToken(user.id, user.username, jwtSecret);
       return jsonResponse({
@@ -216,8 +262,16 @@ export default {
       const formData = await request.formData();
       const file = formData.get('file');
       if (!file) return errorResponse('Thiếu file EPUB');
+      if (file.size > 50 * 1024 * 1024) {
+        return errorResponse('File quá lớn (tối đa 50MB)', 413);
+      }
 
       const fileBuffer = await file.arrayBuffer();
+      const head = new Uint8Array(fileBuffer.slice(0, 4));
+      if (head[0] !== 0x50 || head[1] !== 0x4B) {
+        return errorResponse('File không phải là định dạng ZIP/EPUB hợp lệ', 400);
+      }
+
       const bookId = 'b_' + crypto.randomUUID();
 
       // Fast metadata extraction (NCX / Spine only - sub 100ms)
@@ -631,6 +685,7 @@ export default {
           const headers = new Headers(CORS_HEADERS);
           headers.set('Content-Type', r2Cover.httpMetadata?.contentType || 'image/jpeg');
           headers.set('Cache-Control', 'private, max-age=86400');
+          headers.set('Referrer-Policy', 'no-referrer');
           return new Response(r2Cover.body, { headers });
         }
       }
@@ -649,6 +704,7 @@ export default {
         const headers = new Headers(CORS_HEADERS);
         headers.set('Content-Type', mime);
         headers.set('Cache-Control', 'private, max-age=86400');
+        headers.set('Referrer-Policy', 'no-referrer');
         return new Response(bytes, { headers });
       }
 
@@ -661,12 +717,14 @@ export default {
       if (env.BUCKET) {
         await env.BUCKET.delete([`epubs/${bookId}.epub`, `covers/${bookId}`]);
       }
-      await env.DB.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').bind(bookId, userId).run();
-      await env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(bookId).run();
-      await env.DB.prepare('DELETE FROM book_chunks WHERE book_id = ?').bind(bookId).run();
-      await env.DB.prepare('DELETE FROM covers WHERE book_id = ?').bind(bookId).run();
-      await env.DB.prepare('DELETE FROM bookmarks WHERE book_id = ? AND user_id = ?').bind(bookId, userId).run();
-      await env.DB.prepare('DELETE FROM progress WHERE book_id = ? AND user_id = ?').bind(bookId, userId).run();
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').bind(bookId, userId),
+        env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(bookId),
+        env.DB.prepare('DELETE FROM book_chunks WHERE book_id = ?').bind(bookId),
+        env.DB.prepare('DELETE FROM covers WHERE book_id = ?').bind(bookId),
+        env.DB.prepare('DELETE FROM bookmarks WHERE book_id = ? AND user_id = ?').bind(bookId, userId),
+        env.DB.prepare('DELETE FROM progress WHERE book_id = ? AND user_id = ?').bind(bookId, userId),
+      ]);
       return jsonResponse({ success: true });
     }
 
@@ -1050,23 +1108,26 @@ async function parseEpubMetadataOnly(zip, fallbackName) {
 // Chuẩn hoá HTML trích ra: bỏ thẻ định dạng/class/attr lạ của EPUB,
 // dựng lại thành các đoạn <p> sạch để CSS của trình đọc kiểm soát hoàn toàn.
 function cleanXhtml(raw) {
-  let bodyContent = raw;
-  const bodyM = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let bodyContent = raw || '';
+  const bodyM = bodyContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyM) bodyContent = bodyM[1];
 
+  // Strip dangerous tag blocks
   bodyContent = bodyContent
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<title[\s\S]*?<\/title>/gi, '')
-    .replace(/<link\b[^>]*>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|svg|math|form|base|meta|link|applet)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|svg|math|form|base|meta|link|applet)\b[^>]*>/gi, '')
     .replace(/<span\b[^>]*><\/span>/gi, '');
 
   const plain = (s) => (s || '')
-    .replace(/<(font|strong|b)\b[^>]*>/gi, '')
-    .replace(/<\/(font|strong|b)>/gi, '')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<\/?(i|em|u|a|small|big|sub|sup)\b[^>]*>/gi, '')
+    // Remove inline event handlers
+    .replace(/\son\w+\s*=\s*(['"]).*?\1/gis, '')
+    .replace(/\son\w+\s*=\s*[^ >]+/gis, '')
+    // Remove dangerous protocols
+    .replace(/(href|src)\s*=\s*(['"])\s*(javascript|vbscript|data):.*?\2/gis, '')
+    // Strip all tags EXCEPT safe formatting: em, strong, b, i, u, br
+    .replace(/<(?!\/?(i|em|b|strong|u|br)\b)[^>]*>/gi, '')
+    // Strip any attributes left on the remaining safe formatting tags
+    .replace(/<(i|em|b|strong|u)\b[^>]*>/gi, '<$1>')
     .replace(/\s+/g, ' ')
     .trim();
 
