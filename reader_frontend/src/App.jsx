@@ -63,17 +63,19 @@ export default function App() {
         if (parsed.fontSize === undefined) parsed.fontSize = 19;
         if (parsed.lineHeight === undefined) parsed.lineHeight = 1.8;
         if (parsed.allowSelect === undefined) parsed.allowSelect = false;
+        if (parsed.indent === undefined) parsed.indent = true;
         return parsed;
       } catch (e) {}
     }
     return {
       theme: 'sepia',
-      font: 'font-literata',
+      font: 'font-athelas',
       fontSize: 19,
       lineHeight: 1.8,
       letterSpacing: 0,
       maxWidth: 820,
       justify: true,
+      indent: true,
       allowSelect: false
     };
   });
@@ -1299,7 +1301,7 @@ export default function App() {
             </div>
             <h1 className="chapter-header-title">{currentChapter.title}</h1>
             <div
-              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
+              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.indent !== false ? 'has-indent' : ''} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
               onClick={handleReaderTap}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
@@ -1412,10 +1414,14 @@ export default function App() {
                 <label className="settings-label">Font Chữ</label>
                 <div className="font-options">
                   {[
+                    { id: 'font-athelas', name: 'Athelas (Sách iOS)' },
+                    { id: 'font-palatino', name: 'Palatino' },
+                    { id: 'font-charter', name: 'Charter' },
+                    { id: 'font-newsreader', name: 'Newsreader' },
+                    { id: 'font-lora', name: 'Lora' },
                     { id: 'font-literata', name: 'Literata' },
                     { id: 'font-noto-serif-display', name: 'Noto Serif Display' },
                     { id: 'font-merriweather', name: 'Merriweather' },
-                    { id: 'font-lora', name: 'Lora' },
                     { id: 'font-eb-garamond', name: 'EB Garamond' },
                     { id: 'font-cormorant', name: 'Cormorant Garamond' },
                     { id: 'font-playfair', name: 'Playfair Display' },
@@ -1555,6 +1561,22 @@ export default function App() {
                   </button>
                 </div>
 
+                <label className="settings-label">Thụt Đầu Dòng (Chuẩn Sách)</label>
+                <div className="toggle-row">
+                  <button
+                    className={`setting-toggle ${settings.indent !== false ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, indent: true }))}
+                  >
+                    Có Thụt Dòng
+                  </button>
+                  <button
+                    className={`setting-toggle ${settings.indent === false ? 'active' : ''}`}
+                    onClick={() => setSettings(s => ({ ...s, indent: false }))}
+                  >
+                    Không Thụt
+                  </button>
+                </div>
+
                 <label className="settings-label">Bôi Đen Chữ</label>
                 <div className="toggle-row">
                   <button
@@ -1581,7 +1603,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ theme: settings.theme, font: 'font-literata', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true, allowSelect: false })}
+                  onClick={() => setSettings({ theme: settings.theme, font: 'font-athelas', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true, indent: true, allowSelect: false })}
                 >
                   Khôi Phục Mặc Định
                 </button>
