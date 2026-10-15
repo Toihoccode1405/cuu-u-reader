@@ -630,9 +630,6 @@ export default function App() {
       if (el && !isElementFullyVisible(el)) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-      showToast('Đã ghim dòng đang đọc');
-    } else {
-      showToast('Đã bỏ ghim dòng');
     }
 
     const bookId = currentBook?.record?.id || currentBook?.id;
