@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
-  PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download
+  PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download,
+  Edit3, Check
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
@@ -49,6 +50,7 @@ export default function App() {
   const [focusParaIndex, setFocusParaIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedPara, setSelectedPara] = useState(null);
+  const [editModal, setEditModal] = useState(null);
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
@@ -533,6 +535,7 @@ export default function App() {
     setSelectedPara({
       para: paraIdx,
       excerpt: el ? (el.textContent || '').trim().slice(0, 110) : '',
+      fullText: el ? (el.textContent || '').trim() : '',
       bookmarked: isParaBookmarked(paraIdx)
     });
   };
@@ -554,6 +557,125 @@ export default function App() {
       showToast('Không sao chép được trên thiết bị này');
     }
     setSelectedPara(null);
+  };
+
+  const handleStartEditPara = () => {
+    if (!selectedPara) return;
+    setEditModal({
+      type: 'para',
+      paraIndex: selectedPara.para,
+      title: `Sửa Đoạn ${selectedPara.para + 1}`,
+      text: selectedPara.fullText || ''
+    });
+    setSelectedPara(null);
+  };
+
+  const openChapterEditor = () => {
+    if (!currentChapter) return;
+    const container = document.querySelector('.reader-body');
+    let plainText = '';
+    if (container) {
+      const blocks = Array.from(container.querySelectorAll('[data-p], p, div'));
+      if (blocks.length > 0) {
+        const lines = blocks
+          .map(b => (b.textContent || '').trim())
+          .filter(t => t.length > 0);
+        plainText = Array.from(new Set(lines)).join('\n\n');
+      } else {
+        plainText = (container.textContent || '').trim();
+      }
+    } else {
+      plainText = (currentChapter.content_html || '').replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
+    }
+
+    setEditModal({
+      type: 'chapter',
+      title: currentChapter.title || `Chương ${chapterIndex}`,
+      text: plainText
+    });
+  };
+
+  const handleSaveEditModal = async () => {
+    if (!editModal || !currentBook || !currentChapter) return;
+    const bookId = currentBook.record ? currentBook.record.id : currentBook.id;
+
+    if (editModal.type === 'para') {
+      const el = document.querySelector(`.reader-body [data-p="${editModal.paraIndex}"]`);
+      if (el) {
+        el.textContent = editModal.text;
+      }
+      const container = document.querySelector('.reader-body');
+      const updatedHtml = container ? container.innerHTML : currentChapter.content_html;
+
+      setCurrentChapter(prev => ({
+        ...prev,
+        content_html: updatedHtml
+      }));
+
+      startTopProgress();
+      try {
+        const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${chapterIndex}`), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${cloudToken}`
+          },
+          body: JSON.stringify({
+            title: currentChapter.title,
+            content_html: updatedHtml
+          })
+        });
+        if (res.ok) {
+          showToast('Đã lưu chỉnh sửa đoạn văn!');
+        } else {
+          showToast('Lỗi lưu đoạn văn lên máy chủ');
+        }
+      } catch (err) {
+        showToast('Lỗi mạng khi lưu đoạn văn');
+      } finally {
+        completeTopProgress();
+      }
+      setEditModal(null);
+    } else if (editModal.type === 'chapter') {
+      const newTitle = editModal.title.trim() || currentChapter.title;
+      const paragraphs = editModal.text
+        .split(/\n\s*\n/)
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+      const updatedHtml = paragraphs.map(p => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</p>`).join('\n');
+
+      setCurrentChapter(prev => ({
+        ...prev,
+        title: newTitle,
+        content_html: updatedHtml
+      }));
+
+      startTopProgress();
+      try {
+        const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${chapterIndex}`), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${cloudToken}`
+          },
+          body: JSON.stringify({
+            title: newTitle,
+            content_html: updatedHtml
+          })
+        });
+        if (res.ok) {
+          showToast('Đã lưu toàn bộ chương thành công!');
+        } else {
+          showToast('Lỗi lưu chương lên máy chủ');
+        }
+      } catch (err) {
+        showToast('Lỗi mạng khi lưu chương');
+      } finally {
+        completeTopProgress();
+      }
+      setEditModal(null);
+    }
   };
 
   const loadBookmarks = async (bookId) => {
@@ -924,6 +1046,7 @@ export default function App() {
     toc: () => setShowTOC(v => !v),
     settings: () => setShowSettings(v => !v),
     bookmarks: () => setShowBookmarks(v => !v),
+    editChapter: openChapterEditor,
     shortcuts: () => setShowShortcuts(v => !v),
     back: () => {
       setView('library');
@@ -939,6 +1062,7 @@ export default function App() {
       setShowBookmarks(false);
       setShowShortcuts(false);
       setSelectedPara(null);
+      setEditModal(null);
     }
   };
 
@@ -966,6 +1090,8 @@ export default function App() {
         s.toc();
       } else if (k === 's' || k === 'S') {
         s.settings();
+      } else if (k === 'e' || k === 'E') {
+        s.editChapter();
       } else if (k === 'm' || k === 'M') {
         s.bookmarks();
       } else if (k === '?' || k === '/') {
@@ -1282,6 +1408,13 @@ export default function App() {
                   title="Tải file EPUB về máy"
                 >
                   <Download size={19} />
+                </button>
+                <button
+                  className="btn btn-icon"
+                  onClick={openChapterEditor}
+                  title="Sửa nội dung chương (E)"
+                >
+                  <Edit3 size={19} />
                 </button>
                 <button className="btn btn-icon hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
                   {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
@@ -1644,6 +1777,7 @@ export default function App() {
                   ['J', 'Bật / tắt căn đều 2 bên'],
                   ['+ / −', 'Tăng / giảm cỡ chữ'],
                   ['?', 'Bảng phím tắt này'],
+                  ['E', 'Sửa nội dung chương'],
                   ['Esc', 'Đóng mọi bảng'],
                   ['Backspace', 'Về thư viện'],
                   ['F11', 'Toàn màn hình']
@@ -1674,6 +1808,10 @@ export default function App() {
                   <button className="quick-action" onClick={copySelectedPara}>
                     <Copy size={17} />
                     <span>Sao chép đoạn</span>
+                  </button>
+                  <button className="quick-action" onClick={handleStartEditPara}>
+                    <Edit3 size={17} />
+                    <span>Sửa đoạn văn</span>
                   </button>
                 </div>
                 <button className="quick-sheet-close" onClick={() => setSelectedPara(null)}>Đóng</button>
@@ -1727,6 +1865,64 @@ export default function App() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TEXT EDIT MODAL (Sửa văn bản khi đang đọc) */}
+      {editModal && (
+        <div className="edit-modal-overlay" onClick={() => setEditModal(null)}>
+          <div className="edit-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="edit-modal-header">
+              <div className="edit-modal-title">
+                <Edit3 size={18} />
+                <span>{editModal.type === 'para' ? 'Sửa Đoạn Văn' : 'Chỉnh Sửa Toàn Bộ Chương'}</span>
+              </div>
+              <button className="btn btn-icon" onClick={() => setEditModal(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="edit-modal-body">
+              {editModal.type === 'chapter' && (
+                <div className="edit-field-group">
+                  <label className="edit-field-label">Tiêu đề chương</label>
+                  <input
+                    type="text"
+                    className="edit-title-input"
+                    value={editModal.title}
+                    onChange={(e) => setEditModal(m => ({ ...m, title: e.target.value }))}
+                    placeholder="Tiêu đề chương..."
+                  />
+                </div>
+              )}
+
+              <div className="edit-field-group" style={{ flex: 1 }}>
+                <label className="edit-field-label">
+                  {editModal.type === 'para' ? 'Nội dung đoạn văn' : 'Nội dung văn bản (mỗi đoạn cách nhau một dòng trống)'}
+                </label>
+                <textarea
+                  className="edit-textarea"
+                  value={editModal.text}
+                  onChange={(e) => setEditModal(m => ({ ...m, text: e.target.value }))}
+                  placeholder="Nhập nội dung văn bản..."
+                  rows={editModal.type === 'para' ? 6 : 14}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="edit-modal-footer">
+              <span className="edit-modal-hint">
+                {editModal.type === 'para' ? 'Vị trí trang đọc được giữ nguyên sau khi lưu' : 'Được đồng bộ tự động lên đám mây'}
+              </span>
+              <button className="btn btn-secondary" onClick={() => setEditModal(null)}>
+                Hủy
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveEditModal}>
+                <Check size={16} /> Lưu Thay Đổi
+              </button>
             </div>
           </div>
         </div>
