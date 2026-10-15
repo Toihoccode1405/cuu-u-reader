@@ -146,6 +146,10 @@ body {
 }
 
 /* Fonts (tất cả đều có subset tiếng Việt) */
+.font-athelas { font-family: 'Athelas', 'New York', 'Palatino', 'Lora', Georgia, serif; }
+.font-palatino { font-family: 'Palatino', 'Palatino Linotype', 'Book Antiqua', Georgia, serif; }
+.font-charter { font-family: 'Charter', 'Bitstream Charter', Georgia, serif; }
+.font-newsreader { font-family: 'Newsreader', 'Lora', Georgia, serif; }
 .font-literata { font-family: 'Literata', Georgia, serif; }
 .font-merriweather { font-family: 'Merriweather', Georgia, serif; }
 .font-lora { font-family: 'Lora', Georgia, serif; }
@@ -742,12 +746,26 @@ body {
   max-width: 100%;
   height: auto;
 }
-/* Đoạn văn: không thụt đầu dòng, không căn đều (tránh giãn chữ ở dòng tiêu đề) */
+/* Đoạn văn: khoảng cách đoạn thoáng đãng */
 .reader-body p,
 .reader-body div {
-  margin: 0 0 0.75em 0;
-  text-indent: 0 !important;
+  margin: 0 0 0.85em 0;
   text-align: left;
+}
+
+/* Thụt đầu dòng chuẩn sách / tiểu thuyết khi có class has-indent */
+.reader-body.has-indent p,
+.reader-body.has-indent div[data-p] {
+  text-indent: 1.8em;
+}
+
+.reader-body.has-indent h1,
+.reader-body.has-indent h2,
+.reader-body.has-indent h3,
+.reader-body.has-indent h4,
+.reader-body.has-indent .chapter-header-title,
+.reader-body.has-indent img {
+  text-indent: 0 !important;
 }
 /* Căn đều 2 bên: khoảng trắng chỉ giãn giữa các từ, không giãn giữa ký tự */
 .reader-body.text-justify p,
