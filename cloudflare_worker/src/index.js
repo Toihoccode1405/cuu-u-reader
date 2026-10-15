@@ -525,6 +525,30 @@ export default {
         next_index: chapterIdx < record.total_chapters ? chapterIdx + 1 : null
       });
     }
+
+    // 6.1 Books: Update Chapter Content (Sửa văn bản chương)
+    if (matchChapter && (request.method === 'PUT' || request.method === 'POST')) {
+      const bookId = matchChapter[1];
+      const chapterIdx = parseInt(matchChapter[2]);
+      const body = await request.json();
+      const content_html = body?.content_html;
+      const title = body?.title || `Chương ${chapterIdx}`;
+
+      if (!content_html) return errorResponse('Thiếu nội dung chương', 400);
+
+      const book = await env.DB.prepare('SELECT id FROM books WHERE id = ? AND user_id = ?')
+        .bind(bookId, userId).first();
+      if (!book) return errorResponse('Không tìm thấy sách', 404);
+
+      await env.DB.prepare(`
+        INSERT INTO chapters (book_id, chapter_index, title, content)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (book_id, chapter_index)
+        DO UPDATE SET content = excluded.content, title = excluded.title
+      `).bind(bookId, chapterIdx, title, content_html).run();
+
+      return jsonResponse({ success: true, book_id: bookId, chapter_index: chapterIdx, title });
+    }
     // 7. Books: Update Progress
     const matchProgress = path.match(/^\/api\/books\/([^\/]+)\/progress$/);
     if (matchProgress && request.method === 'POST') {

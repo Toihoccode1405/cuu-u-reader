@@ -2250,3 +2250,130 @@ input[type="range"] {
   color: #ef4444;
   background-color: rgba(239, 68, 68, 0.1);
 }
+
+/* =============================================================================
+   TEXT EDITOR MODAL (Chỉnh sửa văn bản EPUB khi đang đọc)
+   ============================================================================= */
+.edit-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 1rem;
+}
+
+.edit-modal-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  animation: editModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes editModalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.edit-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+.edit-modal-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.edit-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.edit-field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.edit-title-input {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.edit-title-input:focus {
+  border-color: var(--accent-color);
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 52vh;
+  padding: 0.85rem 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text-main);
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.edit-textarea:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-light, rgba(180, 83, 9, 0.15));
+}
+
+.edit-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+.edit-modal-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-right: auto;
+}
