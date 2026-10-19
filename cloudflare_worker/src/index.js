@@ -274,9 +274,30 @@ export default {
 
       const bookId = 'b_' + crypto.randomUUID();
 
-      // Fast metadata extraction (NCX / Spine only - sub 100ms)
-      const zip = await JSZip.loadAsync(fileBuffer);
-      const metadata = await parseEpubMetadataOnly(zip, file.name);
+      // Check if client provided pre-parsed metadata to save server CPU
+      let metadata = null;
+      const metaField = formData.get('metadata');
+      if (metaField) {
+        try {
+          const parsed = typeof metaField === 'string' ? JSON.parse(metaField) : metaField;
+          if (parsed && parsed.title && Array.isArray(parsed.chapters) && parsed.chapters.length > 0) {
+            metadata = {
+              title: parsed.title,
+              author: parsed.author || 'Khuyết danh',
+              coverBase64: parsed.coverBase64 || parsed.cover_data || null,
+              chapters: parsed.chapters
+            };
+          }
+        } catch (e) {
+          console.warn('Metadata parsing error, falling back to server parse:', e);
+        }
+      }
+
+      // Fast metadata extraction fallback on server
+      if (!metadata) {
+        const zip = await JSZip.loadAsync(fileBuffer);
+        metadata = await parseEpubMetadataOnly(zip, file.name);
+      }
 
       let hasCover = 0;
       if (metadata.coverBase64) {
@@ -301,6 +322,9 @@ export default {
         }
       }
 
+      // Encode TOC safely: compressed if > 60KB so it never exceeds D1 100KB statement limit
+      const encodedToc = await encodeTocJson(metadata.chapters, env, bookId);
+
       // Save book record
       await env.DB.prepare(
         'INSERT INTO books (id, user_id, title, author, total_chapters, current_chapter, scroll_percent, has_cover, chapters_json, added_at, toc_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -313,7 +337,7 @@ export default {
         1,
         0,
         hasCover,
-        JSON.stringify(metadata.chapters.map(c => ({ index: c.index, title: c.title, href: c.href }))),
+        encodedToc,
         Date.now(),
         TOC_VERSION
       ).run();
@@ -333,10 +357,7 @@ export default {
           const start = i * CHUNK_SIZE;
           const end = Math.min(uint8.length, start + CHUNK_SIZE);
           const slice = uint8.subarray(start, end);
-          let binary = '';
-          const slen = slice.byteLength;
-          for (let j = 0; j < slen; j++) binary += String.fromCharCode(slice[j]);
-          const b64 = btoa(binary);
+          const b64 = toBase64Fast(slice);
 
           chunkStatements.push(
             env.DB.prepare('INSERT INTO book_chunks (book_id, chunk_index, data) VALUES (?, ?, ?)')
@@ -344,8 +365,10 @@ export default {
           );
         }
 
-        for (let i = 0; i < chunkStatements.length; i += 80) {
-          await env.DB.batch(chunkStatements.slice(i, i + 80));
+        // Batch in groups of 8 statements (~480KB) to respect D1 payload limits (<1MB)
+        const BATCH_SIZE = 8;
+        for (let i = 0; i < chunkStatements.length; i += BATCH_SIZE) {
+          await env.DB.batch(chunkStatements.slice(i, i + BATCH_SIZE));
         }
       }
       return jsonResponse({
@@ -430,7 +453,7 @@ export default {
         }
       }
 
-      const chapters = JSON.parse(record.chapters_json || '[]');
+      const chapters = await decodeTocJson(record.chapters_json, env, bookId);
       return jsonResponse({
         record: {
           id: record.id,
@@ -505,13 +528,23 @@ export default {
         }
 
         if (epubBytes) {
-          const toc = JSON.parse(record.chapters_json || '[]');
+          const toc = await decodeTocJson(record.chapters_json, env, bookId);
           const targetCh = toc.find(c => c.index === chapterIdx);
           title = targetCh?.title || `Chương ${chapterIdx}`;
 
           const zip = await JSZip.loadAsync(epubBytes);
           content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
           content_html = stripDuplicateHeading(content_html, title);
+
+          // Cache in chapters table so subsequent reads are instant (< 2ms)
+          if (content_html) {
+            env.DB.prepare(`
+              INSERT INTO chapters (book_id, chapter_index, title, content)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT (book_id, chapter_index)
+              DO UPDATE SET content = excluded.content, title = excluded.title
+            `).bind(bookId, chapterIdx, title, content_html).run().catch(e => console.error('Chapter cache error:', e));
+          }
         }
       }
 
@@ -739,12 +772,13 @@ export default {
     if (matchDetail && request.method === 'DELETE') {
       const bookId = matchDetail[1];
       if (env.BUCKET) {
-        await env.BUCKET.delete([`epubs/${bookId}.epub`, `covers/${bookId}`]);
+        await env.BUCKET.delete([`epubs/${bookId}.epub`, `covers/${bookId}`, `tocs/${bookId}.json`]);
       }
       await env.DB.batch([
         env.DB.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').bind(bookId, userId),
         env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(bookId),
         env.DB.prepare('DELETE FROM book_chunks WHERE book_id = ?').bind(bookId),
+        env.DB.prepare('DELETE FROM book_tocs WHERE book_id = ?').bind(bookId),
         env.DB.prepare('DELETE FROM covers WHERE book_id = ?').bind(bookId),
         env.DB.prepare('DELETE FROM bookmarks WHERE book_id = ? AND user_id = ?').bind(bookId, userId),
         env.DB.prepare('DELETE FROM progress WHERE book_id = ? AND user_id = ?').bind(bookId, userId),
@@ -824,6 +858,22 @@ async function initTables(db) {
       )
     `).run();
     await db.prepare(`
+      CREATE TABLE IF NOT EXISTS book_chunks (
+        book_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (book_id, chunk_index)
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS book_tocs (
+        book_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (book_id, chunk_index)
+      )
+    `).run();
+    await db.prepare(`
       CREATE TABLE IF NOT EXISTS progress (
         user_id TEXT NOT NULL,
         book_id TEXT NOT NULL,
@@ -857,6 +907,143 @@ async function initTables(db) {
 // with a fragment anchor (#filepos...). The chapter slice runs from its own
 // anchor to the next chapter anchor inside the same file.
 const TOC_VERSION = 2;
+
+function toBase64Fast(u8) {
+  let binary = '';
+  const len = u8.byteLength;
+  const CHUNK = 8192;
+  for (let i = 0; i < len; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, u8.subarray(i, Math.min(len, i + CHUNK)));
+  }
+  return btoa(binary);
+}
+
+async function encodeTocJson(chapters, env, bookId) {
+  const json = JSON.stringify((chapters || []).map(c => ({ index: c.index, title: c.title, href: c.href })));
+
+  // If R2 is enabled, store full uncompressed TOC JSON in R2
+  if (env && env.BUCKET && bookId) {
+    try {
+      await env.BUCKET.put(`tocs/${bookId}.json`, json, {
+        httpMetadata: { contentType: 'application/json' }
+      });
+    } catch (e) {
+      console.error('Failed to put TOC to R2:', e);
+    }
+  }
+
+  // Under 60KB: store raw JSON directly in D1
+  if (json.length <= 60000) return json;
+
+  // Deflate-compress to fit within Cloudflare D1 100KB statement limit
+  try {
+    const cs = new CompressionStream('deflate-raw');
+    const writer = cs.writable.getWriter();
+    writer.write(new TextEncoder().encode(json));
+    writer.close();
+    const reader = cs.readable.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((acc, c) => acc + c.length, 0);
+    const u8 = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      u8.set(c, off);
+      off += c.length;
+    }
+    const b64 = 'gz:' + toBase64Fast(u8);
+
+    // Fits in D1 single statement
+    if (b64.length <= 85000) return b64;
+
+    // Fallback for massive books (5,000+ chapters): split into book_tocs table
+    if (env && env.DB && bookId) {
+      const TOC_CHUNK = 60000;
+      const totalTocs = Math.ceil(b64.length / TOC_CHUNK);
+      for (let i = 0; i < totalTocs; i++) {
+        const slice = b64.slice(i * TOC_CHUNK, (i + 1) * TOC_CHUNK);
+        await env.DB.prepare('INSERT OR REPLACE INTO book_tocs (book_id, chunk_index, data) VALUES (?, ?, ?)')
+          .bind(bookId, i, slice)
+          .run();
+      }
+      return 'table:book_tocs';
+    }
+    return b64;
+  } catch (e) {
+    console.error('encodeTocJson compression failed:', e);
+    return json.slice(0, 50000);
+  }
+}
+
+async function decodeTocJson(str, env, bookId) {
+  // If R2 has the TOC, load directly from R2
+  if (env && env.BUCKET && bookId) {
+    try {
+      const r2Toc = await env.BUCKET.get(`tocs/${bookId}.json`);
+      if (r2Toc) {
+        return await r2Toc.json();
+      }
+    } catch (e) {}
+  }
+
+  if (!str) return [];
+
+  // Check if chunked in book_tocs table
+  if (str === 'table:book_tocs' && env && env.DB && bookId) {
+    try {
+      const { results } = await env.DB.prepare(
+        'SELECT data FROM book_tocs WHERE book_id = ? ORDER BY chunk_index ASC'
+      ).bind(bookId).all();
+      if (results && results.length > 0) {
+        str = results.map(r => r.data).join('');
+      }
+    } catch (e) {
+      console.error('Failed to read book_tocs:', e);
+    }
+  }
+
+  if (!str.startsWith('gz:')) {
+    try {
+      return JSON.parse(str);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  try {
+    const rawB64 = str.slice(3);
+    const bin = atob(rawB64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    writer.write(u8);
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((acc, c) => acc + c.length, 0);
+    const resU8 = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      resU8.set(c, off);
+      off += c.length;
+    }
+    return JSON.parse(new TextDecoder().decode(resU8));
+  } catch (e) {
+    console.error('decodeTocJson decompression failed:', e);
+    return [];
+  }
+}
 
 function anchorOffset(html, anchor) {
   if (!anchor) return -1;
@@ -916,10 +1103,11 @@ async function reindexBook(env, record) {
     // Any chapter content cached by the old parser is invalid now.
     await env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(record.id).run();
 
+    const encodedToc = await encodeTocJson(metadata.chapters, env, record.id);
     await env.DB.prepare(
       'UPDATE books SET chapters_json = ?, total_chapters = ?, toc_version = ? WHERE id = ?'
     ).bind(
-      JSON.stringify(metadata.chapters.map(c => ({ index: c.index, title: c.title, href: c.href }))),
+      encodedToc,
       metadata.chapters.length,
       TOC_VERSION,
       record.id
@@ -1014,15 +1202,25 @@ function decodeEntities(s) {
     .replace(/&amp;/g, '&');
 }
 
+function getZipNormalizedMap(zip) {
+  if (zip._normMap) return zip._normMap;
+  const map = new Map();
+  for (const name of Object.keys(zip.files)) {
+    map.set(name.toLowerCase().replace(/\\/g, '/'), zip.files[name]);
+  }
+  zip._normMap = map;
+  return map;
+}
+
 function findZipFile(zip, filename) {
   if (!filename) return null;
-  const target = filename.toLowerCase().replace(/\\/g, '/');
   if (zip.files[filename]) return zip.files[filename];
-  for (const name of Object.keys(zip.files)) {
-    if (name.toLowerCase().replace(/\\/g, '/') === target) return zip.files[name];
-  }
-  for (const name of Object.keys(zip.files)) {
-    if (name.toLowerCase().replace(/\\/g, '/').endsWith(target)) return zip.files[name];
+  const target = filename.toLowerCase().replace(/\\/g, '/');
+  const map = getZipNormalizedMap(zip);
+  if (map.has(target)) return map.get(target);
+
+  for (const [key, file] of map.entries()) {
+    if (key.endsWith(target)) return file;
   }
   return null;
 }

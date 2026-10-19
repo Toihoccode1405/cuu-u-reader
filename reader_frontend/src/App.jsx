@@ -8,6 +8,7 @@ import {
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
+import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
 export default function App() {
   // Cloud Auth State
@@ -268,7 +269,7 @@ export default function App() {
   // BOOK MANAGEMENT (UPLOAD & DELETE)
   // ---------------------------------------------------------------------------
 
-  const handleUpload = (file) => {
+  const handleUpload = async (file) => {
     if (!file || !file.name.toLowerCase().endsWith('.epub')) {
       showToast('Vui lòng chọn file định dạng .epub');
       return;
@@ -280,11 +281,40 @@ export default function App() {
       percent: 0,
       loaded: 0,
       total: file.size,
-      statusText: 'Đang chuẩn bị tải lên...'
+      statusText: 'Đang đọc và phân tích cấu trúc EPUB...'
+    });
+
+    // Client-side pre-parse: fast, zero-server-CPU, extracts TOC & cover locally
+    let clientMetadata = null;
+    try {
+      const parsed = await parseEpubClient(file);
+      if (parsed) {
+        clientMetadata = {
+          title: parsed.title,
+          author: parsed.author,
+          coverBase64: parsed.cover_data,
+          chapters: parsed.chapters
+        };
+        // Also cache in local IndexedDB for instant offline reading
+        await saveBookToDB(parsed).catch(e => console.warn('Local DB save ignored:', e));
+      }
+    } catch (parseErr) {
+      console.warn('Client EPUB pre-parse skipped:', parseErr);
+    }
+
+    setUploadProgress({
+      fileName: file.name,
+      percent: 5,
+      loaded: 0,
+      total: file.size,
+      statusText: 'Đang chuẩn bị tải lên máy chủ...'
     });
 
     const formData = new FormData();
     formData.append('file', file);
+    if (clientMetadata) {
+      formData.append('metadata', JSON.stringify(clientMetadata));
+    }
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', getApiUrl('/api/books/upload'));
@@ -295,10 +325,10 @@ export default function App() {
         const pct = Math.min(99, Math.round((e.loaded / e.total) * 100));
         setUploadProgress({
           fileName: file.name,
-          percent: pct,
+          percent: Math.max(5, pct),
           loaded: e.loaded,
           total: e.total,
-          statusText: pct >= 99 ? 'Đang phân tích cấu trúc EPUB trên máy chủ...' : `Đang tải lên: ${pct}%`
+          statusText: pct >= 99 ? 'Đang lưu trữ và đồng bộ sách trên máy chủ...' : `Đang tải lên: ${pct}%`
         });
       }
     };
@@ -323,14 +353,28 @@ export default function App() {
         await loadUserData(cloudToken);
       } else {
         setUploadProgress(null);
-        alert(`Lỗi tải sách: ${xhr.responseText || ('Mã lỗi ' + xhr.status)}`);
+        let errorMsg = `Mã lỗi ${xhr.status}`;
+        try {
+          const resJson = JSON.parse(xhr.responseText);
+          if (resJson && resJson.error) {
+            errorMsg = resJson.error;
+          }
+        } catch {
+          const titleMatch = (xhr.responseText || '').match(/<title>([^<]+)<\/title>/i);
+          if (titleMatch) {
+            errorMsg = `Máy chủ: ${titleMatch[1].trim()}`;
+          } else if (xhr.responseText && xhr.responseText.length < 200) {
+            errorMsg = xhr.responseText;
+          }
+        }
+        alert(`Lỗi tải sách: ${errorMsg}`);
       }
     };
 
     xhr.onerror = () => {
       completeTopProgress();
       setUploadProgress(null);
-      alert('Lỗi kết nối khi tải sách lên máy chủ');
+      alert('Lỗi kết nối khi tải sách lên máy chủ. Vui lòng kiểm tra lại đường truyền mạng.');
     };
 
     xhr.send(formData);
@@ -395,11 +439,41 @@ export default function App() {
     startTopProgress();
 
     try {
-      const res = await fetch(getApiUrl(`/api/books/${bookId}`), {
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
-      });
-      if (!res.ok) throw new Error('Không thể tải thông tin sách.');
-      const bookData = await res.json();
+      let bookData = null;
+      try {
+        const res = await fetch(getApiUrl(`/api/books/${bookId}`), {
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        if (res.ok) {
+          bookData = await res.json();
+        }
+      } catch (netErr) {
+        console.warn('Network book detail failed, checking local:', netErr);
+      }
+
+      if (!bookData) {
+        const localBook = await getBookFromDB(bookId).catch(() => null);
+        if (localBook) {
+          bookData = {
+            record: {
+              id: localBook.id,
+              title: localBook.title,
+              author: localBook.author,
+              total_chapters: localBook.total_chapters || (localBook.chapters ? localBook.chapters.length : 0),
+              current_chapter: localBook.current_chapter || 1,
+              scroll_percent: localBook.scroll_percent || 0,
+              para_index: localBook.para_index || 0,
+              focus_para: -1,
+              focus_chapter: -1,
+              has_cover: !!localBook.cover_data,
+              added_at: localBook.added_at
+            },
+            chapters: localBook.chapters || []
+          };
+        }
+      }
+
+      if (!bookData) throw new Error('Không thể tải thông tin sách.');
 
       setCurrentBook(bookData);
       setChapterIndex(targetChapter);
@@ -425,11 +499,27 @@ export default function App() {
   const loadChapter = async (bookId, idx, restoreScroll = 0, explicitTitle = null, restorePara = null, restoreFocus = null, restoreFocusChapter = null) => {
     startTopProgress();
     try {
-      const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
-      });
-      if (!res.ok) throw new Error('Không thể tải nội dung chương.');
-      const data = await res.json();
+      let data = null;
+      try {
+        const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        if (res.ok) {
+          data = await res.json();
+        }
+      } catch (netErr) {
+        console.warn('Network load chapter failed, checking local cache:', netErr);
+      }
+
+      if (!data) {
+        // Fallback to local IndexedDB if available on this device
+        const localBook = await getBookFromDB(bookId).catch(() => null);
+        if (localBook && localBook.epub_blob) {
+          data = await loadChapterFromEpubBlob(localBook, idx);
+        }
+      }
+
+      if (!data) throw new Error('Không thể tải nội dung chương.');
 
       // Queue exact-position restore; consumed by the render effect below
       pendingRestoreRef.current = {

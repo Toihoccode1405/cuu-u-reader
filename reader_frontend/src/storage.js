@@ -13,32 +13,29 @@ const zipCache = new Map();
 // Helper: case-insensitive & slash-tolerant zip file lookup
 export function findZipFile(zip, filename) {
   if (!filename) return null;
-  const target = filename.toLowerCase().replace(/\\/g, '/');
+  const cleanName = filename.split('#')[0].trim();
+  if (!cleanName) return null;
+  if (zip.files[cleanName]) return zip.files[cleanName];
 
-  // 1. Exact match
-  if (zip.files[filename]) return zip.files[filename];
-
-  // 2. Case-insensitive exact normalized match
-  for (const name of Object.keys(zip.files)) {
-    if (name.toLowerCase().replace(/\\/g, '/') === target) {
-      return zip.files[name];
+  const target = cleanName.toLowerCase().replace(/\\/g, '/');
+  if (!zip._normMap) {
+    const map = new Map();
+    for (const name of Object.keys(zip.files)) {
+      map.set(name.toLowerCase().replace(/\\/g, '/'), zip.files[name]);
     }
+    zip._normMap = map;
   }
 
-  // 3. Normalized endsWith match
-  for (const name of Object.keys(zip.files)) {
-    if (name.toLowerCase().replace(/\\/g, '/').endsWith(target)) {
-      return zip.files[name];
-    }
+  if (zip._normMap.has(target)) return zip._normMap.get(target);
+
+  for (const [key, file] of zip._normMap.entries()) {
+    if (key.endsWith(target)) return file;
   }
 
-  // 4. Base filename only match
   const baseName = target.split('/').pop();
   if (baseName) {
-    for (const name of Object.keys(zip.files)) {
-      if (name.toLowerCase().split('/').pop() === baseName) {
-        return zip.files[name];
-      }
+    for (const [key, file] of zip._normMap.entries()) {
+      if (key.split('/').pop() === baseName) return file;
     }
   }
 
@@ -402,8 +399,8 @@ export async function parseEpubClient(file) {
           const chTitle = getTagText(npXml, 'text') || `Chương ${idx}`;
           const srcM = npXml.match(/<content\s+[^>]*src=[\x27"]([^\x27"]+)[\x27"]/i);
           if (srcM) {
-            const cleanSrc = srcM[1].split('#')[0].trim();
-            const fullSrc = opfDir ? `${opfDir}/${cleanSrc}` : cleanSrc;
+            const rawSrc = srcM[1].trim();
+            const fullSrc = opfDir ? `${opfDir}/${rawSrc}` : rawSrc;
             chapters.push({
               index: idx,
               title: chTitle,
