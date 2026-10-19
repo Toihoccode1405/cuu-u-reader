@@ -15,9 +15,14 @@ export function findZipFile(zip, filename) {
   if (!filename) return null;
   const cleanName = filename.split('#')[0].trim();
   if (!cleanName) return null;
+  let decoded = cleanName;
+  try { decoded = decodeURIComponent(cleanName); } catch (e) {}
+
+  if (zip.files[decoded]) return zip.files[decoded];
   if (zip.files[cleanName]) return zip.files[cleanName];
 
-  const target = cleanName.toLowerCase().replace(/\\/g, '/');
+  const targetDecoded = decoded.toLowerCase().replace(/\\/g, '/');
+  const targetRaw = cleanName.toLowerCase().replace(/\\/g, '/');
   if (!zip._normMap) {
     const map = new Map();
     for (const name of Object.keys(zip.files)) {
@@ -26,13 +31,14 @@ export function findZipFile(zip, filename) {
     zip._normMap = map;
   }
 
-  if (zip._normMap.has(target)) return zip._normMap.get(target);
+  if (zip._normMap.has(targetDecoded)) return zip._normMap.get(targetDecoded);
+  if (zip._normMap.has(targetRaw)) return zip._normMap.get(targetRaw);
 
   for (const [key, file] of zip._normMap.entries()) {
-    if (key.endsWith(target)) return file;
+    if (key.endsWith(targetDecoded) || key.endsWith(targetRaw)) return file;
   }
 
-  const baseName = target.split('/').pop();
+  const baseName = targetDecoded.split('/').pop();
   if (baseName) {
     for (const [key, file] of zip._normMap.entries()) {
       if (key.split('/').pop() === baseName) return file;
@@ -399,7 +405,8 @@ export async function parseEpubClient(file) {
           const chTitle = getTagText(npXml, 'text') || `Chương ${idx}`;
           const srcM = npXml.match(/<content\s+[^>]*src=[\x27"]([^\x27"]+)[\x27"]/i);
           if (srcM) {
-            const rawSrc = srcM[1].trim();
+            let rawSrc = srcM[1].trim();
+            try { rawSrc = decodeURIComponent(rawSrc); } catch (e) {}
             const fullSrc = opfDir ? `${opfDir}/${rawSrc}` : rawSrc;
             chapters.push({
               index: idx,
