@@ -1045,12 +1045,24 @@ async function decodeTocJson(str, env, bookId) {
   }
 }
 
+function safeDecodeURI(uri) {
+  try {
+    return decodeURIComponent(uri);
+  } catch (e) {
+    return uri;
+  }
+}
+
 function anchorOffset(html, anchor) {
   if (!anchor) return -1;
+  const decodedAnchor = safeDecodeURI(anchor);
   let pos = -1;
-  for (const p of [`id="${anchor}"`, `id='${anchor}'`, `name="${anchor}"`, `name='${anchor}'`]) {
-    const i = html.indexOf(p);
-    if (i >= 0 && (pos < 0 || i < pos)) pos = i;
+  const candidates = anchor === decodedAnchor ? [anchor] : [anchor, decodedAnchor];
+  for (const a of candidates) {
+    for (const p of [`id="${a}"`, `id='${a}'`, `name="${a}"`, `name='${a}'`]) {
+      const i = html.indexOf(p);
+      if (i >= 0 && (pos < 0 || i < pos)) pos = i;
+    }
   }
   if (pos < 0) return -1;
   const lt = html.lastIndexOf('<', pos);
@@ -1060,10 +1072,10 @@ function anchorOffset(html, anchor) {
 function splitHref(href) {
   const raw = (href || '').trim();
   const hashAt = raw.indexOf('#');
-  if (hashAt < 0) return { file: raw.replace(/\\/g, '/'), anchor: '' };
+  if (hashAt < 0) return { file: safeDecodeURI(raw).replace(/\\/g, '/'), anchor: '' };
   return {
-    file: raw.slice(0, hashAt).replace(/\\/g, '/'),
-    anchor: raw.slice(hashAt + 1)
+    file: safeDecodeURI(raw.slice(0, hashAt)).replace(/\\/g, '/'),
+    anchor: safeDecodeURI(raw.slice(hashAt + 1))
   };
 }
 
@@ -1184,8 +1196,8 @@ function parseNcxEntries(ncxXml) {
     const firstNested = body.search(/<navPoint\b/i);
     const own = firstNested >= 0 ? body.slice(0, firstNested) : body;
     const srcMatch = own.match(/<content\b[^>]*src\s*=\s*['"]([^'"]+)['"]/i);
-
-    entries.push({ title, src: srcMatch ? srcMatch[1].trim() : null });
+    const rawSrc = srcMatch ? srcMatch[1].trim() : null;
+    entries.push({ title, src: rawSrc ? safeDecodeURI(rawSrc) : null });
   }
 
   return entries;
@@ -1214,14 +1226,27 @@ function getZipNormalizedMap(zip) {
 
 function findZipFile(zip, filename) {
   if (!filename) return null;
+  const decoded = safeDecodeURI(filename);
+  if (zip.files[decoded]) return zip.files[decoded];
   if (zip.files[filename]) return zip.files[filename];
-  const target = filename.toLowerCase().replace(/\\/g, '/');
+
+  const targetDecoded = decoded.toLowerCase().replace(/\\/g, '/');
+  const targetRaw = filename.toLowerCase().replace(/\\/g, '/');
   const map = getZipNormalizedMap(zip);
-  if (map.has(target)) return map.get(target);
+  if (map.has(targetDecoded)) return map.get(targetDecoded);
+  if (map.has(targetRaw)) return map.get(targetRaw);
 
   for (const [key, file] of map.entries()) {
-    if (key.endsWith(target)) return file;
+    if (key.endsWith(targetDecoded) || key.endsWith(targetRaw)) return file;
   }
+
+  const baseName = targetDecoded.split('/').pop();
+  if (baseName) {
+    for (const [key, file] of map.entries()) {
+      if (key.split('/').pop() === baseName) return file;
+    }
+  }
+
   return null;
 }
 
