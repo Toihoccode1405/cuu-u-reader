@@ -3,7 +3,7 @@ import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
   PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download,
-  Edit3, Check, Volume2, Play, Pause, Square, SkipForward, SkipBack, ChevronDown, ChevronUp, Minus
+  Edit3, Check, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
@@ -52,27 +52,6 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedPara, setSelectedPara] = useState(null);
   const [editModal, setEditModal] = useState(null);
-
-  // TTS (Text-to-Speech) State — Google Translate TTS engine
-  const [ttsPlaying, setTtsPlaying] = useState(false);
-  const [ttsPaused, setTtsPaused] = useState(false);
-  const [ttsParaIndex, setTtsParaIndex] = useState(0);
-  const [ttsSpeed, setTtsSpeed] = useState(() => {
-    const saved = localStorage.getItem('cuu_u_tts_speed');
-    return saved ? parseFloat(saved) : 1;
-  });
-  const [ttsPanelOpen, setTtsPanelOpen] = useState(true);
-  const [ttsAutoNext, setTtsAutoNext] = useState(() => localStorage.getItem('cuu_u_tts_auto_next') !== 'false');
-  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('cuu_u_tts_voice') || 'google');
-  const ttsAudioRef = useRef(new Audio());
-  const ttsActiveRef = useRef(false);
-  const ttsSpeedRef = useRef(1);
-  const ttsVoiceRef = useRef('google');
-  const ttsChapterBlobsRef = useRef([]);
-  const ttsGenRef = useRef(0);
-  const ttsResolveRef = useRef(null);
-  const [ttsLoading, setTtsLoading] = useState(false);
-  const [ttsLoadProgress, setTtsLoadProgress] = useState('');
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('cuu_u_reader_settings');
@@ -1141,288 +1120,6 @@ export default function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // TTS (TEXT-TO-SPEECH) ENGINE
-  // ---------------------------------------------------------------------------
-
-  ttsSpeedRef.current = ttsSpeed;
-  ttsVoiceRef.current = ttsVoice;
-
-  useEffect(() => {
-    localStorage.setItem('cuu_u_tts_speed', String(ttsSpeed));
-    if (ttsAudioRef.current) ttsAudioRef.current.playbackRate = ttsSpeed;
-  }, [ttsSpeed]);
-
-  useEffect(() => {
-    localStorage.setItem('cuu_u_tts_auto_next', String(ttsAutoNext));
-  }, [ttsAutoNext]);
-
-  useEffect(() => {
-    localStorage.setItem('cuu_u_tts_voice', ttsVoice);
-  }, [ttsVoice]);
-
-  const getTtsParagraphs = useCallback(() => {
-    const container = document.querySelector('.reader-body');
-    if (!container) return [];
-    return Array.from(container.querySelectorAll('[data-p]')).map(el => ({
-      index: parseInt(el.getAttribute('data-p'), 10),
-      text: (el.textContent || '').trim(),
-      el
-    })).filter(p => p.text.length > 1);
-  }, []);
-
-  const ttsHighlightPara = useCallback((paraIndex) => {
-    document.querySelectorAll('.tts-active-para').forEach(el => el.classList.remove('tts-active-para'));
-    const el = document.querySelector(`.reader-body [data-p="${paraIndex}"]`);
-    if (el) {
-      el.classList.add('tts-active-para');
-      const rect = el.getBoundingClientRect();
-      const viewH = window.innerHeight;
-      const top3rd = viewH * 0.3;
-      if (rect.top < 80 || rect.top > top3rd || rect.bottom > viewH - 120) {
-        window.scrollTo({ top: window.scrollY + rect.top - top3rd, behavior: 'smooth' });
-      }
-    }
-  }, []);
-
-  const ttsClearHighlight = useCallback(() => {
-    document.querySelectorAll('.tts-active-para').forEach(el => el.classList.remove('tts-active-para'));
-  }, []);
-
-  const ttsStopAudio = useCallback(() => {
-    if (ttsResolveRef.current) { ttsResolveRef.current(); ttsResolveRef.current = null; }
-    const audio = ttsAudioRef.current;
-    audio.pause();
-    audio.removeAttribute('src');
-    audio.onended = null;
-    audio.onerror = null;
-  }, []);
-
-  const ttsStop = useCallback(() => {
-    ttsActiveRef.current = false;
-    ttsGenRef.current++;
-    ttsStopAudio();
-    ttsChapterBlobsRef.current.forEach(p => p.blobs.forEach(b => { if (b) URL.revokeObjectURL(b); }));
-    ttsChapterBlobsRef.current = [];
-    setTtsPlaying(false);
-    setTtsPaused(false);
-    setTtsLoading(false);
-    ttsClearHighlight();
-  }, [ttsClearHighlight, ttsStopAudio]);
-
-  const ttsMakeUrl = useCallback((text) => {
-    const v = ttsVoiceRef.current;
-    return v === 'google'
-      ? `/api/tts?q=${encodeURIComponent(text)}&tl=vi`
-      : `/api/edge-tts?q=${encodeURIComponent(text)}&voice=${encodeURIComponent(v)}`;
-  }, []);
-
-  const ttsFetchBlob = useCallback((url) => {
-    return fetch(url).then(r => r.ok ? r.blob() : null).then(b => b ? URL.createObjectURL(b) : null).catch(() => null);
-  }, []);
-
-  const ttsChunkText = useCallback((text) => {
-    const isEdge = ttsVoiceRef.current !== 'google';
-    const MAX = isEdge ? 800 : 180;
-    const chunks = [];
-    let rest = text;
-    while (rest.length > MAX) {
-      let cut = rest.lastIndexOf('。', MAX);
-      if (cut < 20) cut = rest.lastIndexOf('.', MAX);
-      if (cut < 20) cut = rest.lastIndexOf(',', MAX);
-      if (cut < 20) cut = rest.lastIndexOf(' ', MAX);
-      if (cut < 20) cut = MAX;
-      chunks.push(rest.slice(0, cut + 1).trim());
-      rest = rest.slice(cut + 1).trim();
-    }
-    if (rest) chunks.push(rest);
-    return chunks;
-  }, []);
-
-  const ttsPreloadChapter = useCallback(async (paras) => {
-    const result = [];
-    const BATCH = 5;
-    for (let i = 0; i < paras.length; i += BATCH) {
-      if (!ttsActiveRef.current) return null;
-      const batch = paras.slice(i, i + BATCH);
-      const batchResults = await Promise.all(batch.map(async (p) => {
-        const chunks = ttsChunkText(p.text);
-        const blobs = await Promise.all(chunks.map(c => ttsFetchBlob(ttsMakeUrl(c))));
-        return { paraIdx: p.index, blobs };
-      }));
-      result.push(...batchResults);
-      setTtsLoadProgress(`${Math.min(i + BATCH, paras.length)}/${paras.length}`);
-    }
-    return result;
-  }, [ttsChunkText, ttsFetchBlob, ttsMakeUrl]);
-
-  const ttsPlayLoop = useCallback(async (gen, startIdx) => {
-    const allBlobs = ttsChapterBlobsRef.current;
-    for (let p = startIdx; p < allBlobs.length; p++) {
-      if (ttsGenRef.current !== gen || !ttsActiveRef.current) return;
-      const { paraIdx, blobs } = allBlobs[p];
-      setTtsParaIndex(paraIdx);
-      ttsHighlightPara(paraIdx);
-
-      for (const blobUrl of blobs) {
-        if (ttsGenRef.current !== gen || !ttsActiveRef.current) return;
-        if (!blobUrl) continue;
-        const audio = ttsAudioRef.current;
-        audio.src = blobUrl;
-        audio.playbackRate = ttsSpeedRef.current;
-        await new Promise(resolve => {
-          ttsResolveRef.current = resolve;
-          audio.onended = () => { ttsResolveRef.current = null; resolve(); };
-          audio.onerror = () => { ttsResolveRef.current = null; resolve(); };
-          audio.play().catch(() => { ttsResolveRef.current = null; resolve(); });
-        });
-        if (ttsGenRef.current !== gen || !ttsActiveRef.current) return;
-      }
-    }
-
-    if (ttsGenRef.current !== gen || !ttsActiveRef.current) return;
-
-    if (ttsAutoNext) {
-      const bId = currentBook?.record?.id || currentBook?.id;
-      if (bId && currentChapter?.next_index) {
-        ttsChapterBlobsRef.current.forEach(pp => pp.blobs.forEach(b => { if (b) URL.revokeObjectURL(b); }));
-        ttsChapterBlobsRef.current = [];
-        loadChapter(bId, currentChapter.next_index).then(() => {
-          setTimeout(async () => {
-            if (ttsGenRef.current !== gen || !ttsActiveRef.current) return;
-            const newParas = getTtsParagraphs();
-            if (newParas.length === 0) { ttsStop(); return; }
-            setTtsLoading(true);
-            setTtsLoadProgress(`0/${newParas.length}`);
-            const blobs = await ttsPreloadChapter(newParas);
-            setTtsLoading(false);
-            if (!blobs || ttsGenRef.current !== gen || !ttsActiveRef.current) { ttsStop(); return; }
-            ttsChapterBlobsRef.current = blobs;
-            ttsPlayLoop(gen, 0);
-          }, 500);
-        });
-        return;
-      }
-    }
-    ttsStop();
-    showToast('Đã đọc hết nội dung');
-  }, [ttsHighlightPara, ttsAutoNext, currentBook, currentChapter, getTtsParagraphs, ttsPreloadChapter, ttsStop, showToast]);
-
-  const ttsStartPlaying = useCallback(async (paras, startParaIdx) => {
-    ttsStopAudio();
-    ttsChapterBlobsRef.current.forEach(pp => pp.blobs.forEach(b => { if (b) URL.revokeObjectURL(b); }));
-    ttsChapterBlobsRef.current = [];
-
-    ttsActiveRef.current = true;
-    setTtsPlaying(true);
-    setTtsPaused(false);
-    setTtsLoading(true);
-    setTtsLoadProgress(`0/${paras.length}`);
-
-    const gen = ++ttsGenRef.current;
-    const blobs = await ttsPreloadChapter(paras);
-    setTtsLoading(false);
-
-    if (!blobs || ttsGenRef.current !== gen || !ttsActiveRef.current) {
-      if (ttsGenRef.current === gen) ttsStop();
-      return;
-    }
-    ttsChapterBlobsRef.current = blobs;
-
-    let startIdx = 0;
-    if (startParaIdx != null) {
-      const idx = blobs.findIndex(pp => pp.paraIdx === startParaIdx);
-      if (idx >= 0) startIdx = idx;
-    }
-    ttsPlayLoop(gen, startIdx);
-  }, [ttsStopAudio, ttsPreloadChapter, ttsPlayLoop, ttsStop]);
-
-  const ttsPlay = useCallback(() => {
-    if (ttsPaused && ttsAudioRef.current?.src) {
-      ttsAudioRef.current.play();
-      setTtsPaused(false);
-      setTtsPlaying(true);
-      ttsActiveRef.current = true;
-      return;
-    }
-    const paras = getTtsParagraphs();
-    if (paras.length === 0) {
-      showToast('Không tìm thấy nội dung để đọc');
-      return;
-    }
-    ttsStartPlaying(paras);
-  }, [ttsPaused, getTtsParagraphs, ttsStartPlaying, showToast]);
-
-  const ttsPause = useCallback(() => {
-    if (ttsAudioRef.current) ttsAudioRef.current.pause();
-    setTtsPaused(true);
-    setTtsPlaying(false);
-  }, []);
-
-  const ttsToggle = useCallback(() => {
-    if (ttsPlaying) ttsPause();
-    else ttsPlay();
-  }, [ttsPlaying, ttsPause, ttsPlay]);
-
-  const ttsNext = useCallback(() => {
-    const allBlobs = ttsChapterBlobsRef.current;
-    if (allBlobs.length === 0) return;
-    const currentArrIdx = allBlobs.findIndex(pp => pp.paraIdx === ttsParaIndex);
-    if (currentArrIdx < 0 || currentArrIdx >= allBlobs.length - 1) return;
-    ttsStopAudio();
-    const gen = ++ttsGenRef.current;
-    ttsActiveRef.current = true;
-    setTtsPlaying(true);
-    setTtsPaused(false);
-    ttsPlayLoop(gen, currentArrIdx + 1);
-  }, [ttsParaIndex, ttsStopAudio, ttsPlayLoop]);
-
-  const ttsPrev = useCallback(() => {
-    const allBlobs = ttsChapterBlobsRef.current;
-    if (allBlobs.length === 0) return;
-    const currentArrIdx = allBlobs.findIndex(pp => pp.paraIdx === ttsParaIndex);
-    if (currentArrIdx <= 0) return;
-    ttsStopAudio();
-    const gen = ++ttsGenRef.current;
-    ttsActiveRef.current = true;
-    setTtsPlaying(true);
-    setTtsPaused(false);
-    ttsPlayLoop(gen, currentArrIdx - 1);
-  }, [ttsParaIndex, ttsStopAudio, ttsPlayLoop]);
-
-  const ttsPlayFromPara = useCallback((paraIdx) => {
-    const allBlobs = ttsChapterBlobsRef.current;
-    if (allBlobs.length > 0) {
-      const arrIdx = allBlobs.findIndex(pp => pp.paraIdx === paraIdx);
-      if (arrIdx >= 0) {
-        ttsStopAudio();
-        const gen = ++ttsGenRef.current;
-        ttsActiveRef.current = true;
-        setTtsPlaying(true);
-        setTtsPaused(false);
-        ttsPlayLoop(gen, arrIdx);
-        return;
-      }
-    }
-    const paras = getTtsParagraphs();
-    if (paras.length === 0) return;
-    ttsStartPlaying(paras, paraIdx);
-  }, [ttsStopAudio, ttsPlayLoop, getTtsParagraphs, ttsStartPlaying]);
-
-  useEffect(() => {
-    if (ttsActiveRef.current) ttsStop();
-    ttsChapterBlobsRef.current.forEach(pp => pp.blobs.forEach(b => { if (b) URL.revokeObjectURL(b); }));
-    ttsChapterBlobsRef.current = [];
-  }, [ttsVoice, ttsStop]);
-
-  useEffect(() => {
-    return () => ttsStopAudio();
-  }, [ttsStopAudio]);
-
-  useEffect(() => {
-    if (view !== 'reader') ttsStop();
-  }, [view, ttsStop]);
-
-  // ---------------------------------------------------------------------------
   // KEYBOARD SHORTCUTS (chỉ hoạt động khi đang đọc)
   // ---------------------------------------------------------------------------
   shortcutsRef.current = {
@@ -1440,7 +1137,6 @@ export default function App() {
     settings: () => setShowSettings(v => !v),
     bookmarks: () => setShowBookmarks(v => !v),
     editChapter: openChapterEditor,
-    tts: ttsToggle,
     shortcuts: () => setShowShortcuts(v => !v),
     back: () => {
       setView('library');
@@ -1486,8 +1182,6 @@ export default function App() {
         s.settings();
       } else if (k === 'e' || k === 'E') {
         s.editChapter();
-      } else if (k === 'v' || k === 'V') {
-        s.tts();
       } else if (k === 'm' || k === 'M') {
         s.bookmarks();
       } else if (k === '?' || k === '/') {
@@ -1769,6 +1463,22 @@ export default function App() {
 
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
+                  className="btn btn-icon hide-on-mobile"
+                  disabled={!currentChapter.prev_index}
+                  onClick={() => shortcutsRef.current.prevChapter()}
+                  title="Chương trước (←)"
+                >
+                  <ChevronLeft size={19} />
+                </button>
+                <button
+                  className="btn btn-icon hide-on-mobile"
+                  disabled={!currentChapter.next_index}
+                  onClick={() => shortcutsRef.current.nextChapter()}
+                  title="Chương tiếp theo (→)"
+                >
+                  <ChevronRight size={19} />
+                </button>
+                <button
                   className={`btn btn-icon ${focusParaIndex >= 0 ? 'flag-on' : ''}`}
                   onClick={() => toggleFocusLine()}
                   title="Ghim sáng dòng đang đọc (H)"
@@ -1804,13 +1514,6 @@ export default function App() {
                   title="Tải file EPUB về máy"
                 >
                   <Download size={19} />
-                </button>
-                <button
-                  className={`btn btn-icon ${ttsPlaying || ttsPaused ? 'flag-on' : ''}`}
-                  onClick={ttsToggle}
-                  title={ttsPlaying ? 'Tạm dừng đọc (V)' : 'Đọc truyện bằng giọng nói (V)'}
-                >
-                  <Volume2 size={19} />
                 </button>
                 <button
                   className="btn btn-icon"
@@ -1866,98 +1569,6 @@ export default function App() {
               </button>
             </div>
           </main>
-
-          {/* TTS FLOATING PLAYER */}
-          {(ttsPlaying || ttsPaused) && (
-            <div className={`tts-player ${ttsPanelOpen ? '' : 'tts-player-collapsed'}`}>
-              <div className="tts-player-header" onClick={() => setTtsPanelOpen(v => !v)}>
-                <div className="tts-player-title">
-                  <Volume2 size={16} />
-                  <span>Đọc Truyện</span>
-                  {!ttsPanelOpen && (
-                    <span className="tts-status-dot">{ttsLoading ? 'Đang tải...' : ttsPlaying ? 'Đang đọc...' : 'Tạm dừng'}</span>
-                  )}
-                </div>
-                <div className="tts-player-header-actions">
-                  <button className="tts-btn-mini" onClick={(e) => { e.stopPropagation(); ttsToggle(); }} title={ttsPlaying ? 'Tạm dừng' : 'Tiếp tục'}>
-                    {ttsPlaying ? <Pause size={16} /> : <Play size={16} />}
-                  </button>
-                  <button className="tts-btn-mini" onClick={(e) => { e.stopPropagation(); ttsStop(); }} title="Dừng hẳn">
-                    <Square size={14} />
-                  </button>
-                  {ttsPanelOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                </div>
-              </div>
-
-              {ttsPanelOpen && (
-                <div className="tts-player-body">
-                  <div className="tts-controls">
-                    <button className="tts-ctrl-btn" onClick={ttsPrev} title="Đoạn trước">
-                      <SkipBack size={18} />
-                    </button>
-                    <button className={`tts-ctrl-btn tts-play-btn ${ttsPlaying ? 'playing' : ''}`} onClick={ttsToggle}>
-                      {ttsPlaying ? <Pause size={22} /> : <Play size={22} />}
-                    </button>
-                    <button className="tts-ctrl-btn" onClick={ttsNext} title="Đoạn tiếp">
-                      <SkipForward size={18} />
-                    </button>
-                    <button className="tts-ctrl-btn tts-stop-btn" onClick={ttsStop} title="Dừng">
-                      <Square size={16} />
-                    </button>
-                  </div>
-
-                  <div className="tts-info-row">
-                    <span className="tts-para-info">{ttsLoading ? `Đang tải... ${ttsLoadProgress}` : `Đoạn ${ttsParaIndex + 1}`}</span>
-                    <span className="tts-status-text">{ttsLoading ? 'Đang tải giọng đọc' : ttsPlaying ? 'Đang đọc...' : 'Tạm dừng'}</span>
-                  </div>
-
-                  <div className="tts-setting-row">
-                    <label className="tts-label">Giọng đọc</label>
-                    <select
-                      className="tts-voice-select"
-                      value={ttsVoice}
-                      onChange={(e) => setTtsVoice(e.target.value)}
-                    >
-                      <option value="google">Google (Nữ)</option>
-                      <option value="vi-VN-HoaiMyNeural">HoaiMy (Nữ)</option>
-                      <option value="vi-VN-NamMinhNeural">NamMinh (Nam)</option>
-                    </select>
-                  </div>
-
-                  <div className="tts-setting-row">
-                    <label className="tts-label">Tốc độ</label>
-                    <div className="tts-speed-controls">
-                      <button
-                        className="tts-speed-step-btn"
-                        onClick={() => setTtsSpeed(s => Math.max(0.3, Math.round((s - 0.1) * 10) / 10))}
-                      ><Minus size={16} /></button>
-                      <span className="tts-speed-value">{ttsSpeed.toFixed(1)}x</span>
-                      <button
-                        className="tts-speed-step-btn"
-                        onClick={() => setTtsSpeed(s => Math.min(3, Math.round((s + 0.1) * 10) / 10))}
-                      ><Plus size={16} /></button>
-                    </div>
-                  </div>
-
-                  <div className="tts-setting-row">
-                    <label className="tts-label">Tự chuyển chương</label>
-                    <div className="tts-toggle-wrap">
-                      <button
-                        className={`setting-toggle ${ttsAutoNext ? 'active' : ''}`}
-                        onClick={() => setTtsAutoNext(true)}
-                        style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                      >Bật</button>
-                      <button
-                        className={`setting-toggle ${!ttsAutoNext ? 'active' : ''}`}
-                        onClick={() => setTtsAutoNext(false)}
-                        style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                      >Tắt</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           <footer className="reader-footer">
             <span>
@@ -2269,7 +1880,6 @@ export default function App() {
                   ['C', 'Mở mục lục chương'],
                   ['M', 'Danh sách cờ đã cắm'],
                   ['S', 'Cài đặt giao diện'],
-                  ['V', 'Bật / tắt đọc truyện bằng giọng nói'],
                   ['J', 'Bật / tắt căn đều 2 bên'],
                   ['+ / −', 'Tăng / giảm cỡ chữ'],
                   ['?', 'Bảng phím tắt này'],
@@ -2308,10 +1918,6 @@ export default function App() {
                   <button className="quick-action" onClick={handleStartEditPara}>
                     <Edit3 size={17} />
                     <span>Sửa đoạn văn</span>
-                  </button>
-                  <button className="quick-action" onClick={() => { ttsPlayFromPara(selectedPara.para); setSelectedPara(null); }}>
-                    <Volume2 size={17} />
-                    <span>Đọc từ đây</span>
                   </button>
                 </div>
                 <button className="quick-sheet-close" onClick={() => setSelectedPara(null)}>Đóng</button>
