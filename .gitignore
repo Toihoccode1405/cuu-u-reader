@@ -28,3 +28,6 @@ cover_*.jpg
 cover_*.png
 cover_*.webp
 tien_nghich_titles.json
+
+# Dữ liệu cào truyện cục bộ (cookie, chương, EPUB)
+Cao_Truyen/
