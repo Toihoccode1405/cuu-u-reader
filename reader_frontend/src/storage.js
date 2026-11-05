@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { encryptText, decryptText } from './crypto';
 
 const DB_NAME = 'CuuUReaderDB';
@@ -264,6 +263,7 @@ export async function loadChapterFromEpubBlob(book, chapterIndex) {
     if (!book.epub_blob) {
       throw new Error('Không tìm thấy file sách trong bộ nhớ thiết bị.');
     }
+    const { default: JSZip } = await import('jszip');
     zip = await JSZip.loadAsync(book.epub_blob);
     zipCache.set(book.id, zip);
   }
@@ -295,6 +295,7 @@ export async function loadChapterFromEpubBlob(book, chapterIndex) {
 
 export async function parseEpubClient(file) {
   const arrayBuffer = await file.arrayBuffer();
+  const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(arrayBuffer);
 
   // 1. Locate META-INF/container.xml

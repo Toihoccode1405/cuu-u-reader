@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS books (
   has_cover INTEGER DEFAULT 0,
   chapters_json TEXT NOT NULL,
   added_at INTEGER NOT NULL,
-  toc_version INTEGER DEFAULT 0
+  toc_version INTEGER DEFAULT 0,
+  focus_para INTEGER DEFAULT -1,
+  focus_chapter INTEGER DEFAULT -1
 );
 
 CREATE TABLE IF NOT EXISTS covers (
@@ -48,6 +50,8 @@ CREATE TABLE IF NOT EXISTS progress (
   chapter_title TEXT NOT NULL,
   scroll_percent REAL NOT NULL,
   para_index INTEGER DEFAULT 0,
+  focus_para INTEGER DEFAULT -1,
+  focus_chapter INTEGER DEFAULT -1,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)
 );
@@ -71,3 +75,12 @@ CREATE TABLE IF NOT EXISTS user_settings (
   settings_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  reset_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_books_user_added ON books (user_id, added_at DESC);
+CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress (user_id, updated_at DESC);

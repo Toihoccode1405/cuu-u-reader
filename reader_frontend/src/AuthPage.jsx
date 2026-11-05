@@ -26,8 +26,8 @@ export default function AuthPage({ onLoginSuccess }) {
         setError('Tên tài khoản phải từ 3 ký tự trở lên.');
         return;
       }
-      if (password.length < 4) {
-        setError('Mật khẩu phải từ 4 ký tự trở lên.');
+      if (password.length < 8) {
+        setError('Mật khẩu phải từ 8 ký tự trở lên.');
         return;
       }
       if (password !== confirmPassword) {

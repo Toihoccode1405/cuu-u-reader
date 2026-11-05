@@ -1,13 +1,9 @@
 export const DEFAULT_WORKER_URL = 'https://cuu-u-reader.toihoccode1405.workers.dev';
 
+// Worker phục vụ cả giao diện lẫn API nên mặc định gọi cùng origin (cũng hợp với CSP connect-src 'self').
+// Chỉ khi chạy `vite dev` (cổng riêng, không có Worker) mới gọi sang Worker đã deploy.
 export function getApiBase() {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host.endsWith('workers.dev') || host.endsWith('pages.dev')) {
-      return '';
-    }
-  }
-  return DEFAULT_WORKER_URL;
+  return import.meta.env.DEV ? DEFAULT_WORKER_URL : '';
 }
 
 export function getApiUrl(path) {

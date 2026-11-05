@@ -6,6 +6,7 @@ import {
   Edit3, Check, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import AuthPage from './AuthPage';
+import AuthImage, { clearAuthImageCache } from './AuthImage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
@@ -130,10 +131,8 @@ export default function App() {
     setTimeout(() => setToast(null), ms);
   }, []);
 
-  const getCoverUrl = useCallback((bookId) => {
-    const tokenQuery = cloudToken ? `?token=${encodeURIComponent(cloudToken)}` : '';
-    return getApiUrl(`/api/books/${bookId}/cover${tokenQuery}`);
-  }, [cloudToken]);
+  // Token KHÔNG được đưa lên URL; ảnh bìa được tải bằng header Authorization qua <AuthImage>.
+  const getCoverUrl = useCallback((bookId) => getApiUrl(`/api/books/${bookId}/cover`), []);
 
   // Dòng được coi là "đang nhìn thấy" nếu toàn bộ chiều cao của nó nằm trong
   // vùng đọc, trừ header cố định ở trên và chừa mép dưới.
@@ -253,6 +252,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    clearAuthImageCache();
     localStorage.removeItem('cuu_u_cloud_token');
     localStorage.removeItem('cuu_u_cloud_user');
     setCloudToken('');
@@ -408,8 +408,7 @@ export default function App() {
     startTopProgress();
     try {
       showToast(`Đang chuẩn bị tải: ${title}...`);
-      const tokenQuery = cloudToken ? `?token=${encodeURIComponent(cloudToken)}` : '';
-      const url = getApiUrl(`/api/books/${bookId}/file${tokenQuery}`);
+      const url = getApiUrl(`/api/books/${bookId}/file`);
       const res = await fetch(url, {
         headers: cloudToken ? { 'Authorization': `Bearer ${cloudToken}` } : {}
       });
@@ -1297,12 +1296,11 @@ export default function App() {
                   {history.map((item) => (
                     <div key={item.book_id} className="history-card">
                       {item.has_cover ? (
-                        <img
+                        <AuthImage
                           src={getCoverUrl(item.book_id)}
+                          token={cloudToken}
                           alt={item.book_title}
                           className="history-cover"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => { e.target.style.display = 'none'; }}
                         />
                       ) : (
                         <div className="history-cover-placeholder">
@@ -1404,12 +1402,11 @@ export default function App() {
 
                       <div className="book-cover-container">
                         {book.has_cover ? (
-                          <img
+                          <AuthImage
                             src={getCoverUrl(book.id)}
+                            token={cloudToken}
                             alt={book.title}
                             className="book-cover-img"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
                           <div className="book-cover-placeholder">

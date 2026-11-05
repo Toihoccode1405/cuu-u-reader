@@ -1,13 +1,54 @@
 import JSZip from 'jszip';
 
+// Origin được phép gọi API từ trình duyệt (ngoài chính origin của Worker).
+const ALLOWED_DEV_ORIGINS = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+]);
+
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Access-Control-Max-Age': '86400',
 };
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+// Gắn CORS (chỉ origin tin cậy) và header bảo mật cho MỌI phản hồi (API lẫn trang tĩnh).
+function finalizeResponse(request, response) {
+  const res = new Response(response.body, response);
+  const h = res.headers;
+  const origin = request.headers.get('Origin');
+  const selfOrigin = new URL(request.url).origin;
+  if (origin && (origin === selfOrigin || ALLOWED_DEV_ORIGINS.has(origin))) {
+    h.set('Access-Control-Allow-Origin', origin);
+    h.append('Vary', 'Origin');
+  } else {
+    h.delete('Access-Control-Allow-Origin');
+  }
+  h.set('X-Content-Type-Options', 'nosniff');
+  h.set('X-Frame-Options', 'DENY');
+  h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  h.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  h.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  const ct = h.get('Content-Type') || '';
+  if (ct.includes('text/html')) h.set('Content-Security-Policy', CSP);
+  if (ct.includes('application/json') && !h.has('Cache-Control')) h.set('Cache-Control', 'no-store');
+  return res;
+}
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -27,7 +68,11 @@ function errorResponse(msg, status = 400) {
 // CRYPTO HELPERS (WEB CRYPTO API)
 // -----------------------------------------------------------------------------
 
-async function hashPassword(password, salt) {
+// Workers giới hạn PBKDF2 tối đa 100.000 vòng.
+const PBKDF2_ITERATIONS = 100000;
+const LEGACY_PBKDF2_ITERATIONS = 50000;
+
+async function pbkdf2Hex(password, salt, iterations) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
@@ -37,18 +82,42 @@ async function hashPassword(password, salt) {
     ['deriveBits']
   );
   const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: enc.encode(salt),
-      iterations: 50000,
-      hash: 'SHA-256',
-    },
+    { name: 'PBKDF2', salt: enc.encode(salt), iterations, hash: 'SHA-256' },
     key,
     256
   );
   return Array.from(new Uint8Array(bits))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+// Định dạng mới: "pbkdf2$<vòng lặp>$<hex>". Định dạng cũ (chỉ hex, 50.000 vòng) vẫn đăng nhập được
+// và tự nâng cấp lên định dạng mới sau lần đăng nhập đúng.
+async function hashPassword(password, salt) {
+  const hex = await pbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${hex}`;
+}
+
+function timingSafeEqual(a, b) {
+  const enc = new TextEncoder();
+  const x = enc.encode(String(a));
+  const y = enc.encode(String(b));
+  let diff = x.length ^ y.length;
+  const len = Math.max(x.length, y.length);
+  for (let i = 0; i < len; i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+
+async function verifyPassword(password, salt, stored) {
+  if (typeof stored === 'string' && stored.startsWith('pbkdf2$')) {
+    const [, iterStr, hex] = stored.split('$');
+    const iterations = parseInt(iterStr, 10);
+    if (!Number.isFinite(iterations) || iterations < 1000 || iterations > 100000) return { ok: false };
+    const computed = await pbkdf2Hex(password, salt, iterations);
+    return { ok: timingSafeEqual(computed, hex), needsUpgrade: iterations < PBKDF2_ITERATIONS };
+  }
+  const computed = await pbkdf2Hex(password, salt, LEGACY_PBKDF2_ITERATIONS);
+  return { ok: timingSafeEqual(computed, stored), needsUpgrade: true };
 }
 
 // Khóa ký token BẮT BUỘC đặt qua `wrangler secret put JWT_SECRET` (không có giá trị mặc định).
@@ -66,29 +135,49 @@ async function ownsBook(env, bookId, userId) {
 }
 
 const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const failedLogins = new Map(); // username -> { count: number, resetAt: number }
 
-function checkLoginRateLimit(username) {
-  const now = Date.now();
-  const record = failedLogins.get(username);
-  if (record && now < record.resetAt && record.count >= 5) {
-    return false;
-  }
-  return true;
+// Giới hạn đăng nhập lưu trong D1 (chia sẻ giữa mọi instance Worker, không mất khi Worker khởi động lại).
+// Khóa theo (tài khoản + IP) để kẻ tấn công không khóa được tài khoản của người khác từ IP khác,
+// và theo riêng IP để chặn dò nhiều tài khoản.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_PER_USER_IP = 5;
+const LOGIN_MAX_PER_IP = 30;
+
+function loginKeys(request, username) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  return { userKey: `ui:${username}|${ip}`, ipKey: `ip:${ip}` };
 }
 
-function recordLoginFailure(username) {
+async function isLoginBlocked(env, keys) {
   const now = Date.now();
-  const record = failedLogins.get(username);
-  if (!record || now >= record.resetAt) {
-    failedLogins.set(username, { count: 1, resetAt: now + 5 * 60 * 1000 });
-  } else {
-    record.count += 1;
+  const { results } = await env.DB.prepare(
+    'SELECT key, count FROM login_attempts WHERE key IN (?, ?) AND reset_at > ?'
+  ).bind(keys.userKey, keys.ipKey, now).all();
+  for (const r of results || []) {
+    if (r.key === keys.userKey && r.count >= LOGIN_MAX_PER_USER_IP) return true;
+    if (r.key === keys.ipKey && r.count >= LOGIN_MAX_PER_IP) return true;
   }
+  return false;
 }
 
-function clearLoginFailure(username) {
-  failedLogins.delete(username);
+async function recordLoginFailure(env, keys) {
+  const now = Date.now();
+  const resetAt = now + LOGIN_WINDOW_MS;
+  const stmt = env.DB.prepare(`
+    INSERT INTO login_attempts (key, count, reset_at) VALUES (?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN login_attempts.reset_at <= ? THEN 1 ELSE login_attempts.count + 1 END,
+      reset_at = CASE WHEN login_attempts.reset_at <= ? THEN excluded.reset_at ELSE login_attempts.reset_at END
+  `);
+  await env.DB.batch([
+    stmt.bind(keys.userKey, resetAt, now, now),
+    stmt.bind(keys.ipKey, resetAt, now, now),
+    env.DB.prepare('DELETE FROM login_attempts WHERE reset_at <= ?').bind(now),
+  ]);
+}
+
+async function clearLoginFailure(env, keys) {
+  await env.DB.prepare('DELETE FROM login_attempts WHERE key = ?').bind(keys.userKey).run();
 }
 
 async function generateToken(userId, username, secret) {
@@ -150,7 +239,13 @@ async function verifyToken(token, secret) {
 // -----------------------------------------------------------------------------
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
+    const response = await handleRequest(request, env, ctx);
+    return finalizeResponse(request, response);
+  }
+};
+
+async function handleRequest(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS });
     }
@@ -180,9 +275,10 @@ export default {
         return errorResponse('Hệ thống tạm thời đóng đăng ký tài khoản mới.', 403);
       }
       const { username, password } = await request.json();
-      if (!username || !password || username.length < 3 || password.length < 4) {
-        return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 4 ký tự');
+      if (typeof username !== 'string' || typeof password !== 'string' || username.length < 3 || password.length < 8) {
+        return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 8 ký tự');
       }
+      if (password.length > 200) return errorResponse('Mật khẩu quá dài');
       if (!/^[\p{L}\p{N}_.-]{3,32}$/u.test(username.trim())) {
         return errorResponse('Tên tài khoản chỉ gồm chữ, số, dấu gạch dưới, chấm hoặc gạch ngang (3-32 ký tự)');
       }
@@ -214,29 +310,37 @@ export default {
     // 2. Auth: Login
     if (path === '/api/auth/login' && request.method === 'POST') {
       const { username, password } = await request.json();
-      const cleanUser = username?.toLowerCase().trim();
-      if (!cleanUser || !checkLoginRateLimit(cleanUser)) {
-        return errorResponse('Đăng nhập sai quá 5 lần liên tiếp. Vui lòng thử lại sau 5 phút.', 429);
+      if (typeof username !== 'string' || typeof password !== 'string' || password.length > 200) {
+        return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
+      }
+      const cleanUser = username.toLowerCase().trim();
+      if (!cleanUser) return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
+
+      const keys = loginKeys(request, cleanUser);
+      if (await isLoginBlocked(env, keys)) {
+        return errorResponse('Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.', 429);
       }
 
       const user = await env.DB.prepare('SELECT * FROM users WHERE username = ?')
         .bind(cleanUser)
         .first();
 
-      if (!user) {
-        recordLoginFailure(cleanUser);
+      // Luôn tốn thời gian băm như nhau dù tài khoản có tồn tại hay không (chống dò tài khoản qua thời gian phản hồi)
+      const verify = user
+        ? await verifyPassword(password, 'salt_' + user.id, user.password_hash)
+        : (await pbkdf2Hex(password, 'salt_unknown', PBKDF2_ITERATIONS), { ok: false });
+
+      if (!user || !verify.ok) {
+        await recordLoginFailure(env, keys);
         return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
       }
 
-      const salt = 'salt_' + user.id;
-      const hash = await hashPassword(password, salt);
-
-      if (hash !== user.password_hash) {
-        recordLoginFailure(cleanUser);
-        return errorResponse('Tài khoản hoặc mật khẩu không chính xác');
+      if (verify.needsUpgrade) {
+        const upgraded = await hashPassword(password, 'salt_' + user.id);
+        await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(upgraded, user.id).run();
       }
 
-      clearLoginFailure(cleanUser);
+      await clearLoginFailure(env, keys);
       const jwtSecret = getJwtSecret(env);
       const token = await generateToken(user.id, user.username, jwtSecret);
       return jsonResponse({
@@ -247,7 +351,8 @@ export default {
 
     // Auth Middleware for all protected /api/ routes
     const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || '';
+    // Chỉ nhận token qua header Authorization (không nhận qua URL để tránh lộ token trong log/referrer)
+    const token = authHeader.replace(/^Bearer\s+/i, '');
     const jwtSecret = getJwtSecret(env);
     const userSession = token ? await verifyToken(token, jwtSecret) : null;
     // Auth: Check me
@@ -511,55 +616,27 @@ export default {
         title = chapterRow.title;
         content_html = chapterRow.content;
       } else {
-        // Extract chapter on-the-fly: check R2 first, fallback to book_chunks
-        let epubBytes = null;
-        if (env.BUCKET) {
-          const r2Obj = await env.BUCKET.get(`epubs/${bookId}.epub`);
-          if (r2Obj) {
-            epubBytes = await r2Obj.arrayBuffer();
-          }
-        }
-        if (!epubBytes) {
-          const { results: chunkRows } = await env.DB.prepare(
-            'SELECT data FROM book_chunks WHERE book_id = ? ORDER BY chunk_index ASC'
-          ).bind(bookId).all();
+        // Extract chapter on-the-fly (EPUB lấy từ R2 hoặc book_chunks, có cache trong bộ nhớ instance)
+        const zip = await getBookZip(env, bookId);
 
-          if (chunkRows && chunkRows.length > 0) {
-            let totalLen = 0;
-            const buffers = chunkRows.map(row => {
-              const bin = atob(row.data);
-              const u8 = new Uint8Array(bin.length);
-              for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-              totalLen += u8.length;
-              return u8;
-            });
-            const merged = new Uint8Array(totalLen);
-            let offset = 0;
-            for (const b of buffers) {
-              merged.set(b, offset);
-              offset += b.length;
-            }
-            epubBytes = merged.buffer;
-          }
-        }
-
-        if (epubBytes) {
+        if (zip) {
           const toc = await decodeTocJson(record.chapters_json, env, bookId);
           const targetCh = toc.find(c => c.index === chapterIdx);
           title = targetCh?.title || `Chương ${chapterIdx}`;
 
-          const zip = await JSZip.loadAsync(epubBytes);
           content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
           content_html = stripDuplicateHeading(content_html, title);
 
           // Cache in chapters table so subsequent reads are instant (< 2ms)
           if (content_html) {
-            env.DB.prepare(`
+            // waitUntil: nếu không, Worker có thể bị cắt ngay khi trả phản hồi và bản cache không được ghi
+            const cacheWrite = env.DB.prepare(`
               INSERT INTO chapters (book_id, chapter_index, title, content)
               VALUES (?, ?, ?, ?)
               ON CONFLICT (book_id, chapter_index)
               DO UPDATE SET content = excluded.content, title = excluded.title
             `).bind(bookId, chapterIdx, title, content_html).run().catch(e => console.error('Chapter cache error:', e));
+            if (ctx?.waitUntil) ctx.waitUntil(cacheWrite);
           }
         }
       }
@@ -580,8 +657,12 @@ export default {
       const bookId = matchChapter[1];
       const chapterIdx = parseInt(matchChapter[2]);
       const body = await request.json();
-      const content_html = body?.content_html;
-      const title = body?.title || `Chương ${chapterIdx}`;
+      if (typeof body?.content_html !== 'string' || body.content_html.length > 2_000_000) {
+        return errorResponse('Thiếu nội dung chương hoặc nội dung quá lớn', 400);
+      }
+      // Lọc lại HTML phía server: chỉ giữ đoạn <p> và thẻ định dạng an toàn (chống XSS lưu trữ)
+      const content_html = cleanXhtml(body.content_html);
+      const title = String(body?.title || `Chương ${chapterIdx}`).slice(0, 300);
 
       if (!content_html) return errorResponse('Thiếu nội dung chương', 400);
 
@@ -808,16 +889,81 @@ export default {
       return new Response('Not Found', { status: 404, headers: CORS_HEADERS });
     } catch (err) {
       console.error('API Error:', err);
-      return errorResponse(err.message || 'Lỗi xử lý máy chủ', 500);
+      // Không trả chi tiết lỗi nội bộ (D1, stack...) ra ngoài
+      return errorResponse('Lỗi xử lý máy chủ', 500);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// EPUB ZIP CACHE (trong bộ nhớ instance Worker)
+// Đọc liên tiếp nhiều chương của cùng một sách không phải ghép lại + giải nén cả file mỗi lần.
+// -----------------------------------------------------------------------------
+
+const ZIP_CACHE_TTL_MS = 5 * 60 * 1000;
+const ZIP_CACHE_MAX_ENTRIES = 2;
+const ZIP_CACHE_MAX_BYTES = 30 * 1024 * 1024; // sách lớn hơn thì không cache để tránh tràn bộ nhớ
+const zipCache = new Map(); // bookId -> { zip, at }
+
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+
+async function getBookZip(env, bookId) {
+  const now = Date.now();
+  const hit = zipCache.get(bookId);
+  if (hit && now - hit.at < ZIP_CACHE_TTL_MS) {
+    hit.at = now;
+    return hit.zip;
+  }
+  zipCache.delete(bookId);
+
+  let bytes = null;
+  if (env.BUCKET) {
+    const r2Obj = await env.BUCKET.get(`epubs/${bookId}.epub`);
+    if (r2Obj) bytes = new Uint8Array(await r2Obj.arrayBuffer());
+  }
+  if (!bytes) {
+    const { results: chunkRows } = await env.DB.prepare(
+      'SELECT data FROM book_chunks WHERE book_id = ? ORDER BY chunk_index ASC'
+    ).bind(bookId).all();
+    if (!chunkRows || chunkRows.length === 0) return null;
+    const buffers = chunkRows.map(row => base64ToBytes(row.data));
+    const total = buffers.reduce((n, b) => n + b.length, 0);
+    bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const b of buffers) {
+      bytes.set(b, offset);
+      offset += b.length;
     }
   }
-};
+
+  const zip = await JSZip.loadAsync(bytes);
+  if (bytes.length <= ZIP_CACHE_MAX_BYTES) {
+    zipCache.set(bookId, { zip, at: now });
+    while (zipCache.size > ZIP_CACHE_MAX_ENTRIES) {
+      const oldest = [...zipCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      zipCache.delete(oldest[0]);
+    }
+  }
+  return zip;
+}
 
 // -----------------------------------------------------------------------------
 // D1 DATABASE SCHEMA INITIALIZATION
 // -----------------------------------------------------------------------------
 
 let tablesInitialized = false;
+
+// Thêm cột còn thiếu cho DB tạo bằng phiên bản cũ (CREATE TABLE IF NOT EXISTS không tự thêm cột)
+async function ensureColumn(db, table, column, ddl) {
+  const { results } = await db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!(results || []).some(r => r.name === column)) {
+    await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`).run();
+  }
+}
 
 async function initTables(db) {
   if (tablesInitialized) return;
@@ -912,6 +1058,26 @@ async function initTables(db) {
         updated_at INTEGER NOT NULL
       )
     `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL,
+        reset_at INTEGER NOT NULL
+      )
+    `).run();
+
+    // Đồng bộ cột với schema.sql cho DB tạo từ bản cũ
+    await ensureColumn(db, 'books', 'para_index', 'INTEGER DEFAULT 0');
+    await ensureColumn(db, 'books', 'toc_version', 'INTEGER DEFAULT 0');
+    await ensureColumn(db, 'books', 'focus_para', 'INTEGER DEFAULT -1');
+    await ensureColumn(db, 'books', 'focus_chapter', 'INTEGER DEFAULT -1');
+    await ensureColumn(db, 'progress', 'para_index', 'INTEGER DEFAULT 0');
+    await ensureColumn(db, 'progress', 'focus_para', 'INTEGER DEFAULT -1');
+    await ensureColumn(db, 'progress', 'focus_chapter', 'INTEGER DEFAULT -1');
+
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_books_user_added ON books (user_id, added_at DESC)').run();
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress (user_id, updated_at DESC)').run();
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_login_attempts_reset ON login_attempts (reset_at)').run();
     tablesInitialized = true;
   } catch (e) {
     console.error('initTables error:', e);
