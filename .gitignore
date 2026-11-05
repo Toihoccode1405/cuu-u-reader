@@ -31,3 +31,7 @@ tien_nghich_titles.json
 
 # Dữ liệu cào truyện cục bộ (cookie, chương, EPUB)
 Cao_Truyen/
+
+# Wrangler local state (DB local, cache, log)
+.wrangler/
+.dev.vars

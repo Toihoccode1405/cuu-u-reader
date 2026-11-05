@@ -51,10 +51,18 @@ async function hashPassword(password, salt) {
     .join('');
 }
 
-const DEFAULT_JWT_SECRET = 'REDACTED_SECRET';
-
+// Khóa ký token BẮT BUỘC đặt qua `wrangler secret put JWT_SECRET` (không có giá trị mặc định).
 function getJwtSecret(env) {
-  return env?.JWT_SECRET || DEFAULT_JWT_SECRET;
+  const secret = env?.JWT_SECRET;
+  return secret && secret.length >= 32 ? secret : null;
+}
+
+async function ownsBook(env, bookId, userId) {
+  if (!userId) return false;
+  const row = await env.DB.prepare('SELECT 1 AS ok FROM books WHERE id = ? AND user_id = ?')
+    .bind(bookId, userId)
+    .first();
+  return !!row;
 }
 
 const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -83,7 +91,7 @@ function clearLoginFailure(username) {
   failedLogins.delete(username);
 }
 
-async function generateToken(userId, username, secret = DEFAULT_JWT_SECRET) {
+async function generateToken(userId, username, secret) {
   const payload = `${userId}:${username}:${Date.now()}`;
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -100,8 +108,9 @@ async function generateToken(userId, username, secret = DEFAULT_JWT_SECRET) {
   return btoa(`${payload}:${sigHex}`);
 }
 
-async function verifyToken(token, secret = DEFAULT_JWT_SECRET) {
+async function verifyToken(token, secret) {
   try {
+    if (!secret) return null;
     const raw = atob(token);
     const parts = raw.split(':');
     if (parts.length !== 4) return null;
@@ -160,6 +169,10 @@ export default {
       if (!env.DB) {
         return errorResponse('Chưa liên kết cơ sở dữ liệu Cloudflare D1', 500);
       }
+      if (!getJwtSecret(env)) {
+        console.error('JWT_SECRET chưa được cấu hình (cần >= 32 ký tự)');
+        return errorResponse('Máy chủ chưa được cấu hình đúng', 500);
+      }
       await initTables(env.DB);
     // 1. Auth: Register
     if (path === '/api/auth/register' && request.method === 'POST') {
@@ -169,6 +182,9 @@ export default {
       const { username, password } = await request.json();
       if (!username || !password || username.length < 3 || password.length < 4) {
         return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 4 ký tự');
+      }
+      if (!/^[\p{L}\p{N}_.-]{3,32}$/u.test(username.trim())) {
+        return errorResponse('Tên tài khoản chỉ gồm chữ, số, dấu gạch dưới, chấm hoặc gạch ngang (3-32 ký tự)');
       }
 
       const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ?')
@@ -386,6 +402,7 @@ export default {
     const matchFile = path.match(/^\/api\/books\/([^\/]+)\/file$/);
     if (matchFile && request.method === 'GET') {
       const bookId = matchFile[1];
+      if (!(await ownsBook(env, bookId, userId))) return errorResponse('Không tìm thấy sách', 404);
       if (env.BUCKET) {
         const r2File = await env.BUCKET.get(`epubs/${bookId}.epub`);
         if (r2File) {
@@ -585,6 +602,7 @@ export default {
     const matchProgress = path.match(/^\/api\/books\/([^\/]+)\/progress$/);
     if (matchProgress && request.method === 'POST') {
       const bookId = matchProgress[1];
+      if (!(await ownsBook(env, bookId, userId))) return errorResponse('Không tìm thấy sách', 404);
       const { chapter_index, scroll_percent, chapter_title, book_title, para_index, focus_para, focus_chapter } = await request.json();
 
       let resolvedTitle = book_title;
@@ -640,6 +658,7 @@ export default {
     const matchBookmarks = path.match(/^\/api\/books\/([^\/]+)\/bookmarks$/);
     if (matchBookmarks) {
       const bookId = matchBookmarks[1];
+      if (!(await ownsBook(env, bookId, userId))) return errorResponse('Không tìm thấy sách', 404);
 
       if (request.method === 'GET') {
         const { results } = await env.DB.prepare(
@@ -770,6 +789,7 @@ export default {
     // 10. Delete Book
     if (matchDetail && request.method === 'DELETE') {
       const bookId = matchDetail[1];
+      if (!(await ownsBook(env, bookId, userId))) return errorResponse('Không tìm thấy sách', 404);
       if (env.BUCKET) {
         await env.BUCKET.delete([`epubs/${bookId}.epub`, `covers/${bookId}`, `tocs/${bookId}.json`]);
       }
