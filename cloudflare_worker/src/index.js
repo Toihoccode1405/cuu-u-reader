@@ -180,8 +180,10 @@ async function clearLoginFailure(env, keys) {
   await env.DB.prepare('DELETE FROM login_attempts WHERE key = ?').bind(keys.userKey).run();
 }
 
-async function generateToken(userId, username, secret) {
-  const payload = `${userId}:${username}:${Date.now()}`;
+// Token: base64( userId : encodeURIComponent(username) : issuedAt : tokenVersion : hmac )
+// tokenVersion khớp users.token_version -> tăng giá trị này sẽ vô hiệu mọi token đã cấp.
+async function generateToken(userId, username, secret, tokenVersion = 0) {
+  const payload = `${userId}:${encodeURIComponent(username)}:${Date.now()}:${tokenVersion}`;
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
@@ -202,10 +204,11 @@ async function verifyToken(token, secret) {
     if (!secret) return null;
     const raw = atob(token);
     const parts = raw.split(':');
-    if (parts.length !== 4) return null;
-    const [userId, username, ts, sigHex] = parts;
+    if (parts.length !== 5) return null;
+    const [userId, encUsername, ts, tv, sigHex] = parts;
     const timestamp = parseInt(ts, 10);
-    if (!Number.isFinite(timestamp)) return null;
+    const tokenVersion = parseInt(tv, 10);
+    if (!Number.isFinite(timestamp) || !Number.isFinite(tokenVersion)) return null;
 
     // Check token expiration (30 days) and prevent future timestamps
     const now = Date.now();
@@ -213,7 +216,7 @@ async function verifyToken(token, secret) {
       return null;
     }
 
-    const payload = `${userId}:${username}:${ts}`;
+    const payload = `${userId}:${encUsername}:${ts}:${tv}`;
 
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey(
@@ -228,7 +231,7 @@ async function verifyToken(token, secret) {
     const valid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(payload));
     if (!valid) return null;
 
-    return { userId, username };
+    return { userId, username: decodeURIComponent(encUsername), tokenVersion };
   } catch (e) {
     return null;
   }
@@ -300,7 +303,7 @@ async function handleRequest(request, env, ctx) {
         .run();
 
       const jwtSecret = getJwtSecret(env);
-      const token = await generateToken(userId, username.trim(), jwtSecret);
+      const token = await generateToken(userId, username.trim(), jwtSecret, 0);
       return jsonResponse({
         token,
         user: { id: userId, username: username.trim() }
@@ -342,7 +345,7 @@ async function handleRequest(request, env, ctx) {
 
       await clearLoginFailure(env, keys);
       const jwtSecret = getJwtSecret(env);
-      const token = await generateToken(user.id, user.username, jwtSecret);
+      const token = await generateToken(user.id, user.username, jwtSecret, user.token_version || 0);
       return jsonResponse({
         token,
         user: { id: user.id, username: user.username }
@@ -354,11 +357,28 @@ async function handleRequest(request, env, ctx) {
     // Chỉ nhận token qua header Authorization (không nhận qua URL để tránh lộ token trong log/referrer)
     const token = authHeader.replace(/^Bearer\s+/i, '');
     const jwtSecret = getJwtSecret(env);
-    const userSession = token ? await verifyToken(token, jwtSecret) : null;
+    let userSession = token ? await verifyToken(token, jwtSecret) : null;
+    if (userSession) {
+      // Token còn hạn và chữ ký đúng vẫn phải khớp phiên bản hiện tại của tài khoản (và tài khoản còn tồn tại)
+      const row = await env.DB.prepare('SELECT token_version FROM users WHERE id = ?')
+        .bind(userSession.userId)
+        .first();
+      if (!row || (row.token_version || 0) !== userSession.tokenVersion) userSession = null;
+    }
+
     // Auth: Check me
     if (path === '/api/auth/me' && request.method === 'GET') {
       if (!userSession) return errorResponse('Phiên đăng nhập hết hạn', 401);
-      return jsonResponse({ user: userSession });
+      return jsonResponse({ user: { userId: userSession.userId, username: userSession.username } });
+    }
+
+    // Auth: Đăng xuất mọi thiết bị (vô hiệu toàn bộ token đã cấp cho tài khoản)
+    if (path === '/api/auth/logout-all' && request.method === 'POST') {
+      if (!userSession) return errorResponse('Phiên đăng nhập hết hạn', 401);
+      await env.DB.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?')
+        .bind(userSession.userId)
+        .run();
+      return jsonResponse({ success: true });
     }
 
     if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read') || path.startsWith('/api/settings'))) {
@@ -1067,6 +1087,7 @@ async function initTables(db) {
     `).run();
 
     // Đồng bộ cột với schema.sql cho DB tạo từ bản cũ
+    await ensureColumn(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
     await ensureColumn(db, 'books', 'para_index', 'INTEGER DEFAULT 0');
     await ensureColumn(db, 'books', 'toc_version', 'INTEGER DEFAULT 0');
     await ensureColumn(db, 'books', 'focus_para', 'INTEGER DEFAULT -1');

@@ -3,7 +3,7 @@ import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
   PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download,
-  Edit3, Check, ChevronLeft, ChevronRight
+  Edit3, Check, ChevronLeft, ChevronRight, ShieldAlert
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import AuthImage, { clearAuthImageCache } from './AuthImage';
@@ -263,6 +263,20 @@ export default function App() {
     setCurrentChapter(null);
     setView('auth');
     showToast('Đã đăng xuất.');
+  };
+
+  // Vô hiệu mọi token đã cấp (mọi thiết bị) rồi đăng xuất thiết bị này
+  const handleLogoutAll = async () => {
+    if (!window.confirm('Đăng xuất khỏi TẤT CẢ thiết bị đang đăng nhập tài khoản này?')) return;
+    try {
+      await fetch(getApiUrl('/api/auth/logout-all'), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${cloudToken}` }
+      });
+    } catch (e) {
+      // Mất mạng: vẫn đăng xuất cục bộ, nhưng token cũ chưa bị thu hồi trên máy chủ
+    }
+    handleLogout();
   };
 
   // ---------------------------------------------------------------------------
@@ -1262,6 +1276,13 @@ export default function App() {
                       title="Đăng xuất"
                     >
                       <LogOut size={14} />
+                    </button>
+                    <button
+                      className="btn-logout-icon"
+                      onClick={handleLogoutAll}
+                      title="Đăng xuất mọi thiết bị"
+                    >
+                      <ShieldAlert size={14} />
                     </button>
                   </div>
                 )}
