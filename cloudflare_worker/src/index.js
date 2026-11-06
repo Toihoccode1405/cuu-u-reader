@@ -402,8 +402,8 @@ async function handleRequest(request, env, ctx) {
       const formData = await request.formData();
       const file = formData.get('file');
       if (!file) return errorResponse('Thiếu file EPUB');
-      if (file.size > 50 * 1024 * 1024) {
-        return errorResponse('File quá lớn (tối đa 50MB)', 413);
+      if (file.size > 100 * 1024 * 1024) {
+        return errorResponse('File quá lớn (tối đa 100MB — giới hạn request body của Workers)', 413);
       }
 
       const fileBuffer = await file.arrayBuffer();
@@ -920,9 +920,11 @@ async function handleRequest(request, env, ctx) {
 // -----------------------------------------------------------------------------
 
 const ZIP_CACHE_TTL_MS = 5 * 60 * 1000;
-const ZIP_CACHE_MAX_ENTRIES = 2;
-const ZIP_CACHE_MAX_BYTES = 30 * 1024 * 1024; // sách lớn hơn thì không cache để tránh tràn bộ nhớ
-const zipCache = new Map(); // bookId -> { zip, at }
+const ZIP_CACHE_MAX_ENTRIES = 3;
+// Worker có 128MB RAM: giữ tổng zip đã nạp ≤ 96MB, phần còn lại cho JSZip + response.
+// Sách lớn hơn ngưỡng này vẫn đọc được, chỉ là mỗi lượt phải nạp lại từ R2/D1.
+const ZIP_CACHE_MAX_BYTES = 96 * 1024 * 1024;
+const zipCache = new Map(); // bookId -> { zip, at, bytes }
 
 function base64ToBytes(b64) {
   const bin = atob(b64);
@@ -946,12 +948,24 @@ async function getBookZip(env, bookId) {
     if (r2Obj) bytes = new Uint8Array(await r2Obj.arrayBuffer());
   }
   if (!bytes) {
-    const { results: chunkRows } = await env.DB.prepare(
-      'SELECT data FROM book_chunks WHERE book_id = ? ORDER BY chunk_index ASC'
-    ).bind(bookId).all();
-    if (!chunkRows || chunkRows.length === 0) return null;
-    const buffers = chunkRows.map(row => base64ToBytes(row.data));
-    const total = buffers.reduce((n, b) => n + b.length, 0);
+    // Đọc theo trang thay vì .all() một lượt: sách 40MB có ~700 chunk, nạp hết cùng lúc
+    // nghĩa là giữ ~58MB base64 + 42MB buffer trong RAM (Worker chỉ có 128MB).
+    const PAGE = 24; // ~1.9MB base64 mỗi lượt
+    const buffers = [];
+    let total = 0;
+    for (let start = 0; ; start += PAGE) {
+      const { results: chunkRows } = await env.DB.prepare(
+        'SELECT data FROM book_chunks WHERE book_id = ? ORDER BY chunk_index ASC LIMIT ? OFFSET ?'
+      ).bind(bookId, PAGE, start).all();
+      if (!chunkRows || chunkRows.length === 0) break;
+      for (const row of chunkRows) {
+        const b = base64ToBytes(row.data);
+        buffers.push(b);
+        total += b.length;
+      }
+      if (chunkRows.length < PAGE) break;
+    }
+    if (buffers.length === 0) return null;
     bytes = new Uint8Array(total);
     let offset = 0;
     for (const b of buffers) {
@@ -962,8 +976,10 @@ async function getBookZip(env, bookId) {
 
   const zip = await JSZip.loadAsync(bytes);
   if (bytes.length <= ZIP_CACHE_MAX_BYTES) {
-    zipCache.set(bookId, { zip, at: now });
-    while (zipCache.size > ZIP_CACHE_MAX_ENTRIES) {
+    zipCache.set(bookId, { zip, at: now, bytes: bytes.length });
+    const totalBytes = () => [...zipCache.values()].reduce((n, e) => n + e.bytes, 0);
+    // Ưu tiên đuổi mục cũ nhất cho tới khi thoả cả số lượng lẫn tổng dung lượng
+    while (zipCache.size > 1 && (zipCache.size > ZIP_CACHE_MAX_ENTRIES || totalBytes() > ZIP_CACHE_MAX_BYTES)) {
       const oldest = [...zipCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
       zipCache.delete(oldest[0]);
     }
