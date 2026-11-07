@@ -3,9 +3,21 @@ import JSZip from 'jszip';
 
 export const ORIGIN = 'https://example.com';
 
-export async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
+export const COOKIE_NAME = '__Host-session';
+
+// Lấy giá trị cookie phiên từ phản hồi (Set-Cookie)
+export function cookieFrom(res) {
+  const raw = res.headers.get('set-cookie') || '';
+  const m = raw.match(new RegExp(`${COOKIE_NAME}=([^;]*)`));
+  return m ? m[1] : null;
+}
+
+// `token` là giá trị cookie phiên; trình duyệt thật tự gửi cookie và header Origin cho yêu cầu ghi,
+// nên helper làm giống vậy (đặt `origin: null` để bỏ header Origin, `origin: '...'` để giả origin khác).
+export async function api(path, { method = 'GET', body, token, headers = {}, origin = ORIGIN } = {}) {
   const init = { method, headers: { ...headers } };
-  if (token) init.headers.Authorization = `Bearer ${token}`;
+  if (token) init.headers.Cookie = `${COOKIE_NAME}=${token}`;
+  if (origin && !['GET', 'HEAD', 'OPTIONS'].includes(method) && !init.headers.Origin) init.headers.Origin = origin;
   if (body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
@@ -24,7 +36,7 @@ export const PASSWORD = 'mat-khau-dai-12345';
 export async function registerUser(name = uniqueName(), password = PASSWORD) {
   const res = await api('/api/auth/register', { method: 'POST', body: { username: name, password } });
   const data = await res.json().catch(() => ({}));
-  return { res, name, password, token: data.token, user: data.user };
+  return { res, name, password, token: cookieFrom(res), user: data.user };
 }
 
 // EPUB tối thiểu tạo bằng code (không cần file thật): mỗi chương là một file XHTML
@@ -65,7 +77,7 @@ export async function uploadBook(token, epubBytes, filename = 'sach.epub') {
   const res = await exports.default.fetch(
     new Request(ORIGIN + '/api/books/upload', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `${COOKIE_NAME}=${token}`, Origin: ORIGIN },
       body: fd,
     })
   );

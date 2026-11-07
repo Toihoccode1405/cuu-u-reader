@@ -1,19 +1,5 @@
 import JSZip from 'jszip';
 
-// Origin được phép gọi API từ trình duyệt (ngoài chính origin của Worker).
-const ALLOWED_DEV_ORIGINS = new Set([
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-]);
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Max-Age': '86400',
-};
-
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -27,18 +13,12 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 
-// Gắn CORS (chỉ origin tin cậy) và header bảo mật cho MỌI phản hồi (API lẫn trang tĩnh).
+// Gắn header bảo mật cho MỌI phản hồi của Worker (API lẫn trang tĩnh nếu đi qua Worker).
 function finalizeResponse(request, response) {
   const res = new Response(response.body, response);
   const h = res.headers;
-  const origin = request.headers.get('Origin');
-  const selfOrigin = new URL(request.url).origin;
-  if (origin && (origin === selfOrigin || ALLOWED_DEV_ORIGINS.has(origin))) {
-    h.set('Access-Control-Allow-Origin', origin);
-    h.append('Vary', 'Origin');
-  } else {
-    h.delete('Access-Control-Allow-Origin');
-  }
+  // Không bao giờ cấp CORS: giao diện và API cùng origin, và cookie phiên chỉ dùng trong origin này
+  h.delete('Access-Control-Allow-Origin');
   h.set('X-Content-Type-Options', 'nosniff');
   h.set('X-Frame-Options', 'DENY');
   h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -50,17 +30,17 @@ function finalizeResponse(request, response) {
   return res;
 }
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   });
 }
 
-function errorResponse(msg, status = 400) {
+function errorResponse(msg, status = 400, extraHeaders = {}) {
   return new Response(JSON.stringify({ error: msg }), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   });
 }
 
@@ -135,6 +115,28 @@ async function ownsBook(env, bookId, userId) {
 }
 
 const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Cookie phiên: HttpOnly (JavaScript không đọc được), Secure, SameSite=Strict.
+// Tiền tố __Host- buộc cookie chỉ thuộc đúng host này (không Domain, Path=/).
+const SESSION_COOKIE = '__Host-session';
+const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
+
+function sessionCookie(token) {
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE_S}`;
+}
+
+function clearSessionCookie() {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+}
+
+function readSessionCookie(request) {
+  const header = request.headers.get('Cookie') || '';
+  for (const part of header.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === SESSION_COOKIE) return rest.join('=');
+  }
+  return '';
+}
 
 // Giới hạn đăng nhập lưu trong D1 (chia sẻ giữa mọi instance Worker, không mất khi Worker khởi động lại).
 // Khóa theo (tài khoản + IP) để kẻ tấn công không khóa được tài khoản của người khác từ IP khác,
@@ -250,7 +252,7 @@ export default {
 
 async function handleRequest(request, env, ctx) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
+      return new Response(null, { status: 204 });
     }
     const url = new URL(request.url);
     const path = url.pathname;
@@ -267,6 +269,10 @@ async function handleRequest(request, env, ctx) {
       if (!env.DB) {
         return errorResponse('Chưa liên kết cơ sở dữ liệu Cloudflare D1', 500);
       }
+      // Chống CSRF: yêu cầu ghi dữ liệu bắt buộc có header Origin trùng origin của site
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.get('Origin') !== url.origin) {
+        return errorResponse('Yêu cầu không hợp lệ', 403);
+      }
       if (!getJwtSecret(env)) {
         console.error('JWT_SECRET chưa được cấu hình (cần >= 32 ký tự)');
         return errorResponse('Máy chủ chưa được cấu hình đúng', 500);
@@ -278,8 +284,8 @@ async function handleRequest(request, env, ctx) {
         return errorResponse('Hệ thống tạm thời đóng đăng ký tài khoản mới.', 403);
       }
       const { username, password } = await request.json();
-      if (typeof username !== 'string' || typeof password !== 'string' || username.length < 3 || password.length < 8) {
-        return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 8 ký tự');
+      if (typeof username !== 'string' || typeof password !== 'string' || username.length < 3 || password.length < 12) {
+        return errorResponse('Tài khoản ít nhất 3 ký tự, mật khẩu ít nhất 12 ký tự');
       }
       if (password.length > 200) return errorResponse('Mật khẩu quá dài');
       if (!/^[\p{L}\p{N}_.-]{3,32}$/u.test(username.trim())) {
@@ -304,10 +310,11 @@ async function handleRequest(request, env, ctx) {
 
       const jwtSecret = getJwtSecret(env);
       const token = await generateToken(userId, username.trim(), jwtSecret, 0);
-      return jsonResponse({
-        token,
-        user: { id: userId, username: username.trim() }
-      });
+      return jsonResponse(
+        { user: { id: userId, username: username.trim() } },
+        200,
+        { 'Set-Cookie': sessionCookie(token) }
+      );
     }
 
     // 2. Auth: Login
@@ -346,16 +353,21 @@ async function handleRequest(request, env, ctx) {
       await clearLoginFailure(env, keys);
       const jwtSecret = getJwtSecret(env);
       const token = await generateToken(user.id, user.username, jwtSecret, user.token_version || 0);
-      return jsonResponse({
-        token,
-        user: { id: user.id, username: user.username }
-      });
+      return jsonResponse(
+        { user: { id: user.id, username: user.username } },
+        200,
+        { 'Set-Cookie': sessionCookie(token) }
+      );
+    }
+
+    // Auth: Đăng xuất thiết bị này (chỉ xóa cookie; thiết bị khác vẫn đăng nhập)
+    if (path === '/api/auth/logout' && request.method === 'POST') {
+      return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
     }
 
     // Auth Middleware for all protected /api/ routes
-    const authHeader = request.headers.get('Authorization') || '';
-    // Chỉ nhận token qua header Authorization (không nhận qua URL để tránh lộ token trong log/referrer)
-    const token = authHeader.replace(/^Bearer\s+/i, '');
+    // Chỉ nhận phiên qua cookie HttpOnly (không qua URL hay header, để JavaScript và log không chạm vào token)
+    const token = readSessionCookie(request);
     const jwtSecret = getJwtSecret(env);
     let userSession = token ? await verifyToken(token, jwtSecret) : null;
     if (userSession) {
@@ -368,7 +380,8 @@ async function handleRequest(request, env, ctx) {
 
     // Auth: Check me
     if (path === '/api/auth/me' && request.method === 'GET') {
-      if (!userSession) return errorResponse('Phiên đăng nhập hết hạn', 401);
+      // Chưa đăng nhập: 200 với user = null (không sinh lỗi 401 trong console mỗi lần mở trang)
+      if (!userSession) return jsonResponse({ user: null });
       return jsonResponse({ user: { userId: userSession.userId, username: userSession.username } });
     }
 
@@ -378,7 +391,7 @@ async function handleRequest(request, env, ctx) {
       await env.DB.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?')
         .bind(userSession.userId)
         .run();
-      return jsonResponse({ success: true });
+      return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
     }
 
     if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read') || path.startsWith('/api/settings'))) {
@@ -533,7 +546,6 @@ async function handleRequest(request, env, ctx) {
         if (r2File) {
           return new Response(r2File.body, {
             headers: {
-              ...CORS_HEADERS,
               'Content-Type': 'application/epub+zip',
               'Content-Disposition': `attachment; filename="${bookId}.epub"`,
               'Cache-Control': 'private, max-age=86400'
@@ -566,7 +578,6 @@ async function handleRequest(request, env, ctx) {
 
       return new Response(merged, {
         headers: {
-          ...CORS_HEADERS,
           'Content-Type': 'application/epub+zip',
           'Content-Disposition': `attachment; filename="${bookId}.epub"`,
           'Cache-Control': 'private, max-age=86400'
@@ -858,7 +869,7 @@ async function handleRequest(request, env, ctx) {
       if (env.BUCKET) {
         const r2Cover = await env.BUCKET.get(`covers/${bookId}`);
         if (r2Cover) {
-          const headers = new Headers(CORS_HEADERS);
+          const headers = new Headers();
           headers.set('Content-Type', r2Cover.httpMetadata?.contentType || 'image/jpeg');
           headers.set('Cache-Control', 'private, max-age=86400');
           headers.set('Referrer-Policy', 'no-referrer');
@@ -877,7 +888,7 @@ async function handleRequest(request, env, ctx) {
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-        const headers = new Headers(CORS_HEADERS);
+        const headers = new Headers();
         headers.set('Content-Type', mime);
         headers.set('Cache-Control', 'private, max-age=86400');
         headers.set('Referrer-Policy', 'no-referrer');
@@ -906,7 +917,7 @@ async function handleRequest(request, env, ctx) {
       return jsonResponse({ success: true });
     }
 
-      return new Response('Not Found', { status: 404, headers: CORS_HEADERS });
+      return new Response('Not Found', { status: 404, headers: {} });
     } catch (err) {
       console.error('API Error:', err);
       // Không trả chi tiết lỗi nội bộ (D1, stack...) ra ngoài

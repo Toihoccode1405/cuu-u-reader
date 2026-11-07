@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:workers';
 import worker from '../src/index.js';
-import { api, registerUser, uniqueName, PASSWORD } from './helpers.js';
+import { api, registerUser, uniqueName, PASSWORD, cookieFrom } from './helpers.js';
 
 const login = (username, password, ip = '203.0.113.1') =>
   api('/api/auth/login', { method: 'POST', body: { username, password }, headers: { 'CF-Connecting-IP': ip } });
@@ -14,7 +14,7 @@ describe('S1 - Đăng ký và đăng nhập', () => {
 
     const again = await login(name, PASSWORD);
     expect(again.status).toBe(200);
-    expect((await again.json()).token).toBeTruthy();
+    expect(cookieFrom(again)).toBeTruthy();
   });
 
   it('tên tài khoản có chữ có dấu vẫn dùng được', async () => {
@@ -94,19 +94,22 @@ describe('S1 - Phiên đăng nhập', () => {
     expect(ok.status).toBe(200);
     expect((await ok.json()).user.username).toBe(name);
 
-    expect((await api('/api/auth/me', { token: token + 'x' })).status).toBe(401);
-    expect((await api('/api/auth/me')).status).toBe(401);
+    // Chưa đăng nhập hoặc phiên sai: vẫn trả 200 với user = null (để trang web hỏi phiên mà không sinh lỗi 401 trong console)
+    for (const bad of [await api('/api/auth/me', { token: token + 'x' }), await api('/api/auth/me')]) {
+      expect(bad.status).toBe(200);
+      expect((await bad.json()).user).toBeNull();
+    }
   });
 
   it('đăng xuất mọi thiết bị vô hiệu mọi token cũ nhưng đăng nhập lại vẫn được', async () => {
     const { token: t1, name } = await registerUser();
-    const t2 = (await (await login(name, PASSWORD, '203.0.113.30')).json()).token;
+    const t2 = cookieFrom(await login(name, PASSWORD, '203.0.113.30'));
 
     expect((await api('/api/auth/logout-all', { method: 'POST', token: t2 })).status).toBe(200);
     expect((await api('/api/books', { token: t1 })).status).toBe(401);
     expect((await api('/api/books', { token: t2 })).status).toBe(401);
 
-    const t3 = (await (await login(name, PASSWORD, '203.0.113.30')).json()).token;
+    const t3 = cookieFrom(await login(name, PASSWORD, '203.0.113.30'));
     expect((await api('/api/books', { token: t3 })).status).toBe(200);
   });
 
@@ -117,9 +120,10 @@ describe('S1 - Phiên đăng nhập', () => {
     expect((await api('/api/books', { token: b.token })).status).toBe(200);
   });
 
-  it('không nhận token đặt trên URL', async () => {
+  it('không nhận token đặt trên URL hay trong header Authorization', async () => {
     const { token } = await registerUser();
     expect((await api(`/api/books?token=${token}`)).status).toBe(401);
+    expect((await api('/api/books', { headers: { Authorization: `Bearer ${token}` } })).status).toBe(401);
   });
 });
 

@@ -26,8 +26,8 @@ export default function AuthPage({ onLoginSuccess }) {
         setError('Tên tài khoản phải từ 3 ký tự trở lên.');
         return;
       }
-      if (password.length < 8) {
-        setError('Mật khẩu phải từ 8 ký tự trở lên.');
+      if (password.length < 12) {
+        setError('Mật khẩu phải từ 12 ký tự trở lên.');
         return;
       }
       if (password !== confirmPassword) {
@@ -46,7 +46,7 @@ export default function AuthPage({ onLoginSuccess }) {
       });
 
       // Success
-      onLoginSuccess(data.token, data.user);
+      onLoginSuccess(data.user);
     } catch (err) {
       setError(err.message || 'Lỗi kết nối máy chủ.');
     } finally {

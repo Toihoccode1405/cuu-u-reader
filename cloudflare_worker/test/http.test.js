@@ -2,25 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { api } from './helpers.js';
 
 describe('S4 - CORS và header của API', () => {
-  it('không cho origin lạ gọi API từ trình duyệt', async () => {
-    const res = await api('/api/auth/me', { headers: { Origin: 'https://evil.example' } });
-    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  it('không cho origin nào khác gọi API từ trình duyệt (kể cả origin chạy thử cũ)', async () => {
+    for (const origin of ['https://evil.example', 'http://localhost:5173']) {
+      const res = await api('/api/auth/me', { headers: { Origin: origin } });
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    }
   });
 
-  it('cho phép chính origin của site và origin chạy thử cục bộ', async () => {
-    const self = await api('/api/auth/me', { headers: { Origin: 'https://example.com' } });
-    expect(self.headers.get('access-control-allow-origin')).toBe('https://example.com');
-    const dev = await api('/api/auth/me', { headers: { Origin: 'http://localhost:5173' } });
-    expect(dev.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
-  });
-
-  it('trả lời preflight cho origin được phép, không cấp quyền cho origin lạ', async () => {
-    const ok = await api('/api/books', { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173' } });
-    expect(ok.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
-    expect(ok.headers.get('access-control-allow-headers')).toContain('Authorization');
-
-    const bad = await api('/api/books', { method: 'OPTIONS', headers: { Origin: 'https://evil.example' } });
-    expect(bad.headers.get('access-control-allow-origin')).toBeNull();
+  it('preflight không cấp quyền cho bất kỳ origin nào khác', async () => {
+    for (const origin of ['https://evil.example', 'http://localhost:5173']) {
+      const res = await api('/api/books', { method: 'OPTIONS', headers: { Origin: origin } });
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    }
   });
 
   it('phản hồi JSON không bị cache và có header chống nhúng khung', async () => {

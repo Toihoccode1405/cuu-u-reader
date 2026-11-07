@@ -6,23 +6,18 @@ import {
   Edit3, Check, ChevronLeft, ChevronRight, ShieldAlert
 } from 'lucide-react';
 import AuthPage from './AuthPage';
-import AuthImage, { clearAuthImageCache } from './AuthImage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
 export default function App() {
   // Cloud Auth State
-  const [cloudToken, setCloudToken] = useState(() => localStorage.getItem('cuu_u_cloud_token') || '');
-  const [cloudUser, setCloudUser] = useState(() => {
-    try {
-      const u = localStorage.getItem('cuu_u_cloud_user');
-      return u ? JSON.parse(u) : null;
-    } catch (e) { return null; }
-  });
+  // Phiên đăng nhập nằm trong cookie HttpOnly do máy chủ đặt: JavaScript không đọc được token,
+  // nên trạng thái đăng nhập được hỏi lại máy chủ (/api/auth/me) mỗi lần mở trang.
+  const [cloudUser, setCloudUser] = useState(null);
 
-  // View routing: if not logged in -> 'auth' is the index page!
-  const [view, setView] = useState(() => (localStorage.getItem('cuu_u_cloud_token') ? 'library' : 'auth'));
+  // View routing: 'loading' (đang hỏi máy chủ) -> 'auth' hoặc 'library'
+  const [view, setView] = useState('loading');
 
   // Library & History Data
   const [books, setBooks] = useState([]);
@@ -131,7 +126,6 @@ export default function App() {
     setTimeout(() => setToast(null), ms);
   }, []);
 
-  // Token KHÔNG được đưa lên URL; ảnh bìa được tải bằng header Authorization qua <AuthImage>.
   const getCoverUrl = useCallback((bookId) => getApiUrl(`/api/books/${bookId}/cover`), []);
 
   // Dòng được coi là "đang nhìn thấy" nếu toàn bộ chiều cao của nó nằm trong
@@ -154,7 +148,7 @@ export default function App() {
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
 
     const serialized = JSON.stringify(settings);
-    if (cloudToken && serialized !== lastSavedSettingsRef.current) {
+    if (cloudUser && serialized !== lastSavedSettingsRef.current) {
       clearTimeout(settingsTimeoutRef.current);
       settingsTimeoutRef.current = setTimeout(async () => {
         try {
@@ -162,7 +156,6 @@ export default function App() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${cloudToken}`
             },
             body: JSON.stringify({ settings })
           });
@@ -170,20 +163,18 @@ export default function App() {
         } catch (e) {}
       }, 600);
     }
-  }, [settings, cloudToken]);
+  }, [settings, cloudUser]);
 
   // ---------------------------------------------------------------------------
   // DATA LOADING (AUTO SYNC FROM CLOUDFLARE D1)
   // ---------------------------------------------------------------------------
 
-  const loadUserData = useCallback(async (token) => {
-    if (!token) return;
+  const loadUserData = useCallback(async () => {
     startTopProgress();
     try {
-      const headers = { 'Authorization': `Bearer ${token}` };
 
       // 1. Fetch Books
-      const booksRes = await fetch(getApiUrl('/api/books'), { headers });
+      const booksRes = await fetch(getApiUrl('/api/books'));
       if (booksRes.status === 401) {
         handleLogout();
         return;
@@ -194,14 +185,14 @@ export default function App() {
       }
 
       // 2. Fetch Multi-Book Reading History
-      const histRes = await fetch(getApiUrl('/api/history'), { headers });
+      const histRes = await fetch(getApiUrl('/api/history'));
       if (histRes.ok) {
         const histData = await histRes.json();
         setHistory(histData);
       }
 
       // 3. Fetch Reader Settings from Cloud
-      const settingsRes = await fetch(getApiUrl('/api/settings'), { headers });
+      const settingsRes = await fetch(getApiUrl('/api/settings'));
       if (settingsRes.ok) {
         const { settings: cloudSettings } = await settingsRes.json();
         if (cloudSettings && typeof cloudSettings === 'object' && Object.keys(cloudSettings).length > 0) {
@@ -219,43 +210,66 @@ export default function App() {
     }
   }, [showToast, startTopProgress, completeTopProgress]);
 
+  // Mở trang: hỏi máy chủ xem cookie phiên còn hiệu lực không
+  useEffect(() => {
+    // Xóa token cũ còn sót trong localStorage từ phiên bản trước khi chuyển sang cookie HttpOnly
+    try {
+      localStorage.removeItem('cuu_u_cloud_token');
+      localStorage.removeItem('cuu_u_cloud_user');
+    } catch (e) { /* trình duyệt chặn localStorage: bỏ qua */ }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(getApiUrl('/api/auth/me'));
+        if (cancelled) return;
+        if (res.ok) {
+          const { user } = await res.json();
+          if (user) {
+            setCloudUser({ id: user.userId, username: user.username });
+            setView('library');
+            return;
+          }
+        }
+      } catch (e) {
+        // mất mạng: về trang đăng nhập
+      }
+      if (!cancelled) setView('auth');
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Auto load on startup if logged in
   useEffect(() => {
-    if (cloudToken) {
-      loadUserData(cloudToken);
+    if (cloudUser) {
+      loadUserData();
     }
-  }, [cloudToken, loadUserData]);
+  }, [cloudUser, loadUserData]);
 
   // Auto re-sync when tab gains focus (e.g., switched from phone to PC)
   useEffect(() => {
     const handleFocus = () => {
-      if (cloudToken && view === 'library') {
-        loadUserData(cloudToken);
+      if (cloudUser && view === 'library') {
+        loadUserData();
       }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [cloudToken, view, loadUserData]);
+  }, [cloudUser, view, loadUserData]);
 
   // ---------------------------------------------------------------------------
   // AUTHENTICATION HANDLERS
   // ---------------------------------------------------------------------------
 
-  const handleLoginSuccess = (token, user) => {
-    localStorage.setItem('cuu_u_cloud_token', token);
-    localStorage.setItem('cuu_u_cloud_user', JSON.stringify(user));
-    setCloudToken(token);
+  const handleLoginSuccess = (user) => {
     setCloudUser(user);
     setView('library');
     showToast(`Chào mừng ${user.username}!`);
-    loadUserData(token);
+    loadUserData();
   };
 
   const handleLogout = () => {
-    clearAuthImageCache();
-    localStorage.removeItem('cuu_u_cloud_token');
-    localStorage.removeItem('cuu_u_cloud_user');
-    setCloudToken('');
+    // Báo máy chủ xóa cookie phiên (thiết bị khác vẫn đăng nhập); không chờ kết quả
+    fetch(getApiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => {});
     setCloudUser(null);
     setBooks([]);
     setHistory([]);
@@ -271,10 +285,9 @@ export default function App() {
     try {
       await fetch(getApiUrl('/api/auth/logout-all'), {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
       });
     } catch (e) {
-      // Mất mạng: vẫn đăng xuất cục bộ, nhưng token cũ chưa bị thu hồi trên máy chủ
+      // Mất mạng: vẫn đăng xuất cục bộ, nhưng các phiên khác chưa bị thu hồi trên máy chủ
     }
     handleLogout();
   };
@@ -332,7 +345,6 @@ export default function App() {
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', getApiUrl('/api/books/upload'));
-    xhr.setRequestHeader('Authorization', `Bearer ${cloudToken}`);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && e.total > 0) {
@@ -364,7 +376,7 @@ export default function App() {
           showToast('Đã thêm sách thành công!');
         }
         setTimeout(() => setUploadProgress(null), 600);
-        await loadUserData(cloudToken);
+        await loadUserData();
       } else {
         setUploadProgress(null);
         let errorMsg = `Mã lỗi ${xhr.status}`;
@@ -401,11 +413,10 @@ export default function App() {
       try {
         const res = await fetch(getApiUrl(`/api/books/${book.id}`), {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${cloudToken}` }
-        });
+                  });
         if (res.ok) {
           showToast(`Đã xóa: ${book.title}`);
-          await loadUserData(cloudToken);
+          await loadUserData();
         }
       } catch (e) {
         showToast('Lỗi khi xóa sách');
@@ -424,7 +435,6 @@ export default function App() {
       showToast(`Đang chuẩn bị tải: ${title}...`);
       const url = getApiUrl(`/api/books/${bookId}/file`);
       const res = await fetch(url, {
-        headers: cloudToken ? { 'Authorization': `Bearer ${cloudToken}` } : {}
       });
       if (!res.ok) throw new Error('Không thể tải file sách từ máy chủ');
       const blob = await res.blob();
@@ -455,8 +465,7 @@ export default function App() {
       let bookData = null;
       try {
         const res = await fetch(getApiUrl(`/api/books/${bookId}`), {
-          headers: { 'Authorization': `Bearer ${cloudToken}` }
-        });
+                  });
         if (res.ok) {
           bookData = await res.json();
         }
@@ -515,8 +524,7 @@ export default function App() {
       let data = null;
       try {
         const res = await fetch(getApiUrl(`/api/books/${bookId}/chapters/${idx}`), {
-          headers: { 'Authorization': `Bearer ${cloudToken}` }
-        });
+                  });
         if (res.ok) {
           data = await res.json();
         }
@@ -721,7 +729,6 @@ export default function App() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${cloudToken}`
           },
           body: JSON.stringify({
             title: currentChapter.title,
@@ -760,7 +767,6 @@ export default function App() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${cloudToken}`
           },
           body: JSON.stringify({
             title: newTitle,
@@ -784,8 +790,7 @@ export default function App() {
   const loadBookmarks = async (bookId) => {
     try {
       const res = await fetch(getApiUrl(`/api/books/${bookId}/bookmarks`), {
-        headers: { 'Authorization': `Bearer ${cloudToken}` }
-      });
+              });
       if (res.ok) {
         const list = await res.json();
         setBookmarks(list);
@@ -809,7 +814,6 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cloudToken}`
         },
         body: JSON.stringify({
           chapter_index: chapterIndex,
@@ -881,7 +885,6 @@ export default function App() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cloudToken}`
         },
         body: JSON.stringify({ id: bm.id })
       });
@@ -912,7 +915,7 @@ export default function App() {
   };
 
   const saveProgressToCloud = async (bookId, chTitle, idx, scrollPct, explicitBookTitle = null, paraIndex = 0, focusPara = null, focusChapter = null) => {
-    if (!cloudToken || !bookId) return;
+    if (!cloudUser || !bookId) return;
     try {
       const bTitle = explicitBookTitle || currentBook?.record?.title || currentBook?.title || 'Sách';
       const focusIdx = focusPara === null ? focusParaRef.current : focusPara;
@@ -921,7 +924,6 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cloudToken}`
         },
         body: JSON.stringify({
           chapter_index: idx,
@@ -1153,7 +1155,7 @@ export default function App() {
     shortcuts: () => setShowShortcuts(v => !v),
     back: () => {
       setView('library');
-      loadUserData(cloudToken);
+      loadUserData();
     },
     fullscreen: toggleFullscreen,
     increaseFont: () => setSettings(s => ({ ...s, fontSize: Math.min(34, s.fontSize + 1) })),
@@ -1222,7 +1224,10 @@ export default function App() {
   // VIEW 1: AUTH INDEX PAGE (IF NOT LOGGED IN)
   // ---------------------------------------------------------------------------
 
-  if (view === 'auth' || !cloudToken) {
+  // Đang hỏi máy chủ về phiên: chưa hiện gì để tránh nháy trang đăng nhập
+  if (view === 'loading') return null;
+
+  if (view === 'auth' || !cloudUser) {
     return <AuthPage onLoginSuccess={handleLoginSuccess} />;
   }
 
@@ -1246,7 +1251,7 @@ export default function App() {
         <>
           <header className="header">
             <div className="header-inner">
-              <div className="brand" onClick={() => loadUserData(cloudToken)}>
+              <div className="brand" onClick={() => loadUserData()}>
                 <span className="brand-seal">
                   <XhIcon name="seal" />
                 </span>
@@ -1317,11 +1322,12 @@ export default function App() {
                   {history.map((item) => (
                     <div key={item.book_id} className="history-card">
                       {item.has_cover ? (
-                        <AuthImage
+                        <img
                           src={getCoverUrl(item.book_id)}
-                          token={cloudToken}
                           alt={item.book_title}
                           className="history-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { e.target.style.display = 'none'; }}
                         />
                       ) : (
                         <div className="history-cover-placeholder">
@@ -1423,11 +1429,12 @@ export default function App() {
 
                       <div className="book-cover-container">
                         {book.has_cover ? (
-                          <AuthImage
+                          <img
                             src={getCoverUrl(book.id)}
-                            token={cloudToken}
                             alt={book.title}
                             className="book-cover-img"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
                           <div className="book-cover-placeholder">
@@ -1463,7 +1470,7 @@ export default function App() {
                 className="btn btn-icon"
                 onClick={() => {
                   setView('library');
-                  loadUserData(cloudToken);
+                  loadUserData();
                 }}
                 title="Quay lại Thư viện"
               >
