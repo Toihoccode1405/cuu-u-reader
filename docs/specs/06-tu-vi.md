@@ -45,3 +45,4 @@ Với 2 giờ đọc mỗi ngày (~13 triệu từ/năm) thì đầy trong kho�
 - Mất mạng: báo cáo xếp vào hàng đợi trong localStorage (tối đa 200), gửi bù theo thứ tự khi có mạng. Mỗi báo cáo mang `at` (thời điểm thật lúc đọc); máy chủ chặn `at` không vượt hiện tại và không lùi trước lần báo trước, nên tổng tu vi vẫn bị giới hạn bởi thời gian thật.
 - Đăng xuất xóa hàng đợi.
 - E2E: `e2e/tests/cultivation.spec.js` (S5): chip, Đột phá, công tắc, offline gom và gửi bù; đã kiểm đột biến (bỏ lưu hàng đợi, chip bỏ qua công tắc).
+- Icon cảnh giới: mỗi bậc một icon từ game-icons.net (CC BY 3.0, xem `docs/CREDITS.md`), màu theo Bước (1 xanh ngọc, 2 vàng đồng, 3 tím). Hiện ở chip, banner "Đột phá!" và bảng "Con đường tu luyện" (bấm chip để mở: đủ 18 bậc, đánh dấu bậc hiện tại, ghi alias bậc quá độ). Dữ liệu icon sinh bằng `reader_frontend/scripts/gen-realm-icons.mjs`.

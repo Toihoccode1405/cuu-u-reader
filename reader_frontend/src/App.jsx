@@ -9,6 +9,8 @@ import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
 import { prepareChapters } from './chapterPrep';
+import RealmIcon from './RealmIcon';
+import RealmPath from './RealmPath';
 import { fetchCultivation, runBackfill, setCultivationEnabled, submitReading, flushReportQueue, hasQueuedReports, clearReportQueue } from './cultivation';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
@@ -87,6 +89,7 @@ export default function App() {
   // Tu vi / cảnh giới (máy chủ tính; ở đây chỉ hiển thị và báo "đã đọc đoạn nào")
   const [cultivation, setCultivation] = useState(null);
   const [breakthrough, setBreakthrough] = useState(null);
+  const [showRealmPath, setShowRealmPath] = useState(false);
   const cultivationRef = useRef(null);
   cultivationRef.current = cultivation;
   const breakthroughTimerRef = useRef(null);
@@ -1413,14 +1416,19 @@ export default function App() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 {cultivation && cultivation.enabled && (
-                  <div
-                    className="cultivation-chip"
+                  <button
+                    type="button"
+                    className={`cultivation-chip buoc-${cultivation.realm.buoc}`}
                     data-testid="cultivation-chip"
+                    onClick={() => setShowRealmPath(true)}
                     title={`${cultivation.realm.buoc_name}${cultivation.realm.alias ? ` · ${cultivation.realm.alias}` : ''} · ${cultivation.tu_vi.toLocaleString('vi-VN')} tu vi`}
                   >
-                    <span className="cultivation-realm">{cultivation.realm.name} · tầng {cultivation.realm.tang}</span>
+                    <span className="cultivation-realm">
+                      <RealmIcon name={cultivation.realm.name} size={16} />
+                      {cultivation.realm.name} · tầng {cultivation.realm.tang}
+                    </span>
                     <span className="cultivation-bar"><span style={{ width: `${Math.round(cultivation.realm.progress * 100)}%` }} /></span>
-                  </div>
+                  </button>
                 )}
                 {/* User Profile Badge */}
                 {cloudUser && (
@@ -2254,9 +2262,14 @@ export default function App() {
         </div>
       )}
 
+      {showRealmPath && cultivation && (
+        <RealmPath cultivation={cultivation} onClose={() => setShowRealmPath(false)} />
+      )}
+
       {breakthrough && (
-        <div className="breakthrough-banner" role="status" aria-live="polite">
-          <strong>Đột phá!</strong> {breakthrough.name} · tầng {breakthrough.tang}
+        <div className={`breakthrough-banner buoc-${breakthrough.buoc}`} role="status" aria-live="polite">
+          <RealmIcon name={breakthrough.name} size={26} />
+          <span><strong>Đột phá!</strong> {breakthrough.name} · tầng {breakthrough.tang}</span>
         </div>
       )}
 

@@ -126,3 +126,36 @@ test('Tu vi: đọc khi mất mạng được gom lại và gửi bù khi có m�
   await expect.poll(() => tuVi(page), { timeout: 40_000 }).toBeGreaterThan(0);
   void bookId;
 });
+
+test('Icon cảnh giới: chip có icon đúng bậc, bấm chip mở bảng đủ 18 bậc và đánh dấu bậc hiện tại', async ({ page }) => {
+  const problems = collectProblems(page);
+  await registerViaUi(page);
+  const chip = page.getByTestId('cultivation-chip');
+  await expect(chip.locator('svg[data-icon="Ngưng Khí"]')).toBeVisible();
+
+  await chip.click();
+  const dialog = page.getByRole('dialog', { name: 'Con đường tu luyện' });
+  await expect(dialog).toBeVisible();
+  const rows = dialog.getByTestId('realm-row');
+  await expect(rows).toHaveCount(18);
+
+  // Mỗi bậc một icon riêng
+  const icons = await rows.locator('svg').evaluateAll((els) => els.map((e) => e.getAttribute('data-icon')));
+  expect(new Set(icons).size).toBe(18);
+  // ...và hình vẽ thật sự khác nhau, không bậc nào rơi về icon dự phòng
+  const drawings = await rows.locator('svg').evaluateAll((els) => els.map((e) => e.innerHTML));
+  expect(new Set(drawings).size).toBe(18);
+  await expect(dialog.locator('svg[data-fallback]')).toHaveCount(0);
+
+  // Chỉ bậc hiện tại được đánh dấu
+  await expect(dialog.locator('[aria-current="true"]')).toHaveCount(1);
+  await expect(dialog.locator('[aria-current="true"]')).toContainText('Ngưng Khí');
+
+  // Bước thứ ba có mặt, cảnh giới quá độ có chú thích alias
+  await expect(dialog).toContainText('Tam bộ vô biên');
+  await expect(dialog).toContainText('Phá Không Ngũ Chỉ');
+
+  await dialog.getByRole('button', { name: 'Đóng' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
