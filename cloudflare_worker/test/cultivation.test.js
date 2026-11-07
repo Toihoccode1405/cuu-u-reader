@@ -232,6 +232,17 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     });
   }, 60_000);
 
+  it('sách rất dài chưa tách chương vẫn cộng hồi tố nhanh (ước lượng phần chưa tách theo trung bình), không treo máy chủ', async () => {
+    const chapter = Array(6000).fill('tu').join(' ');
+    const user = await registerUser();
+    const { book } = await uploadBook(user.token, await buildEpub({ chapters: Array.from({ length: 300 }, () => chapter) }));
+    await setProgress(user.token, book.id, 300); // 299 chương đứng trước, mỗi chương 6000 từ
+    const t = performance.now();
+    const res = await (await backfill(user.token)).json();
+    expect(performance.now() - t).toBeLessThan(8000);
+    expect(res.tu_vi).toBe(299 * 6000);
+  }, 60_000);
+
   it('người khác không chạy được cộng hồi tố thay bạn, thiếu origin bị 403', async () => {
     const { token } = await registerUser();
     expect((await api('/api/cultivation/backfill', { method: 'POST' })).status).toBe(401);

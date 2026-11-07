@@ -29,3 +29,9 @@
 - Đổi mật khẩu hai tài khoản local cũ nếu trùng mật khẩu thật.
 - Kiểm tra GitHub Pages đã tắt.
 - Xóa file `%TEMP%\bk\cuu-u-reader-before-rewrite.bundle`.
+
+## Bổ sung sau khi thêm hệ thống tu vi (2026-11-07)
+- Endpoint mới (`/api/cultivation`, `/api/reading/report`, `/api/cultivation/backfill`) đều cần phiên, ghi cần Origin hợp lệ (prod trả 401/403 đúng), sách phải của chính người đọc.
+- Tu vi do máy chủ tính từ nội dung chương nó lưu; trình duyệt không gửi số từ. Tổng tu vi bị chặn bởi thời gian thật (kể cả báo cáo gửi bù offline với `at`).
+- Cộng hồi tố giới hạn công việc mỗi lần (tối đa 40 chương tách thêm) để không treo Worker.
+- Hàng đợi báo cáo offline chỉ chứa id sách và chỉ số đoạn; xóa khi đăng xuất.

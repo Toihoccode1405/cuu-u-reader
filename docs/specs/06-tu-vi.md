@@ -15,7 +15,7 @@
 - Cảnh giới và tầng suy ra từ tu vi; mỗi cảnh giới chia đều theo tầng (9 tầng, riêng Thiên Nhân Suy Kiếp 5 tầng). Bảng mốc ở `shared/cultivation.js`, một hệ số chỉnh được ở một nơi.
 - Đột phá = lên tầng hoặc cảnh giới mới sau một lần báo.
 - Công tắc: tắt chỉ ẩn giao diện, máy chủ vẫn ghi, bật lại không mất gì.
-- Cộng hồi tố một lần duy nhất: các chương đứng trước chương đang đọc của mọi sách.
+- Cộng hồi tố một lần duy nhất: các chương đứng trước chương đang đọc của mọi sách. Chương đã tách thì đếm thật; chương chưa tách chỉ tách thêm tối đa 40 chương mỗi lần, phần còn lại ước lượng theo số từ trung bình của sách đó (đo cho thấy tách 299 chương trong một lần mất ~19 giây, quá rủi ro trên Worker).
 
 ## Mốc cảnh giới (từ)
 | Bước | Cảnh giới | Mốc |

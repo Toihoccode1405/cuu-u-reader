@@ -477,13 +477,35 @@ async function handleRequest(request, env, ctx) {
         const { results: books } = await env.DB.prepare(
           'SELECT id, total_chapters, chapters_json, current_chapter FROM books WHERE user_id = ?'
         ).bind(userId).all();
+        // Chương đã tách thì đếm thật. Chương chưa tách: chỉ tách thêm tối đa BACKFILL_EXTRACT_BUDGET chương mỗi lần
+        // (để không treo máy chủ với sách mấy trăm chương), phần còn lại ước lượng bằng số từ trung bình của sách đó.
         let total = 0;
+        let budget = BACKFILL_EXTRACT_BUDGET;
+        const wordsOf = (html) => paragraphWordCounts(html).reduce((s, n) => s + n, 0);
         for (const b of books || []) {
           const upTo = Math.min((b.current_chapter || 1) - 1, b.total_chapters);
-          for (let i = 1; i <= upTo; i++) {
-            const { content_html } = await loadChapterContent(env, ctx, b, b.id, i);
-            total += paragraphWordCounts(content_html).reduce((s, n) => s + n, 0);
+          if (upTo < 1) continue;
+          const { results: rows } = await env.DB.prepare(
+            'SELECT chapter_index, content FROM chapters WHERE book_id = ? AND chapter_index <= ?'
+          ).bind(b.id, upTo).all();
+          let known = 0;
+          let knownWords = 0;
+          const have = new Set();
+          for (const r of rows || []) {
+            have.add(r.chapter_index);
+            known++;
+            knownWords += wordsOf(r.content);
           }
+          let missing = upTo - known;
+          for (let i = 1; i <= upTo && missing > 0 && budget > 0; i++) {
+            if (have.has(i)) continue;
+            const { content_html } = await loadChapterContent(env, ctx, b, b.id, i);
+            knownWords += wordsOf(content_html);
+            known++;
+            missing--;
+            budget--;
+          }
+          total += knownWords + (known > 0 ? Math.round((knownWords / known) * missing) : 0);
         }
         const before = (await cultivationState(env, userId)).tu_vi;
         const gained = Math.max(0, Math.min(total, MAX_TU_VI - before));
@@ -1312,6 +1334,7 @@ const TOC_VERSION = 2;
 
 // Giới hạn lô chương trình duyệt gửi lên (Tách chương / Tách bù)
 const MAX_BATCH_CHAPTERS = 40;
+const BACKFILL_EXTRACT_BUDGET = 40;
 const MAX_CHAPTER_RAW_CHARS = 500_000;
 
 function toBase64Fast(u8) {
