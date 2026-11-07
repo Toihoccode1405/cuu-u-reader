@@ -43,3 +43,19 @@ _Avoid_: Bookmark, cờ đánh dấu
 **Phiên đăng nhập**:
 Khoảng thời gian một thiết bị được nhận là của người đọc sau khi đăng nhập; có thể bị thu hồi.
 _Avoid_: Session, token, đăng nhập
+
+**Tu vi**:
+Điểm tích lũy của người đọc, tăng khi đọc thật sự các chương của sách; mỗi từ đã đọc là một điểm (đọc lại vẫn tính), nhưng không cộng nhanh hơn tốc độ đọc tối đa theo thời gian thật.
+_Avoid_: XP, điểm kinh nghiệm, exp
+
+**Cảnh giới**:
+Bậc tu luyện của người đọc, suy ra từ tu vi tích lũy; gồm 18 bậc theo ba bộ của truyện Tiên Nghịch (Nhất bộ tung hoành, Nhị bộ phi thăng, Tam bộ vô biên); mỗi bậc chia thành các tầng.
+_Avoid_: Level, cấp độ, rank
+
+**Đột phá**:
+Khoảnh khắc tu vi vượt ngưỡng và người đọc lên tầng hoặc cảnh giới mới.
+_Avoid_: Level up, lên cấp
+
+**Bước**:
+Nhóm lớn của các cảnh giới theo truyện: Bước thứ nhất (Nhất bộ tung hoành), Bước thứ hai (Nhị bộ phi thăng), Bước thứ ba (Tam bộ vô biên); cảnh giới quá độ nằm ở cuối bước chứa nó.
+_Avoid_: Giai đoạn, tier

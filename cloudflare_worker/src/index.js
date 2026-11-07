@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { extractChapterRaw, safeDecodeURI } from '../../shared/epub-chapter.js';
+import { realmFor, paragraphWordCounts, MAX_WORDS_PER_SECOND, MAX_REPORT_SECONDS, MAX_TU_VI } from '../../shared/cultivation.js';
 
 const CSP = [
   "default-src 'self'",
@@ -105,6 +106,52 @@ async function verifyPassword(password, salt, stored) {
 function getJwtSecret(env) {
   const secret = env?.JWT_SECRET;
   return secret && secret.length >= 32 ? secret : null;
+}
+
+// Nội dung một chương: lấy từ bảng chapters nếu đã tách, nếu chưa thì tách từ EPUB rồi lưu lại
+async function loadChapterContent(env, ctx, record, bookId, chapterIdx) {
+  const chapterRow = await env.DB.prepare(
+    'SELECT title, content FROM chapters WHERE book_id = ? AND chapter_index = ?'
+  ).bind(bookId, chapterIdx).first();
+
+  let title = `Chương ${chapterIdx}`;
+  let content_html = '';
+
+  if (chapterRow) {
+    title = chapterRow.title;
+    content_html = chapterRow.content;
+  } else {
+    // Extract chapter on-the-fly (EPUB lấy từ R2 hoặc book_chunks, có cache trong bộ nhớ instance)
+    const zip = await getBookZip(env, bookId);
+
+    if (zip) {
+      const toc = await decodeTocJson(record.chapters_json, env, bookId);
+      const targetCh = toc.find(c => c.index === chapterIdx);
+      title = targetCh?.title || `Chương ${chapterIdx}`;
+
+      content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
+      content_html = stripDuplicateHeading(content_html, title);
+
+      // Cache in chapters table so subsequent reads are instant (< 2ms)
+      if (content_html) {
+        // waitUntil: nếu không, Worker có thể bị cắt ngay khi trả phản hồi và bản cache không được ghi
+        const cacheWrite = env.DB.prepare(`
+          INSERT INTO chapters (book_id, chapter_index, title, content)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT (book_id, chapter_index)
+          DO UPDATE SET content = excluded.content, title = excluded.title
+        `).bind(bookId, chapterIdx, title, content_html).run().catch(e => console.error('Chapter cache error:', e));
+        if (ctx?.waitUntil) ctx.waitUntil(cacheWrite);
+      }
+    }
+  }
+  return { title, content_html };
+}
+
+async function cultivationState(env, userId) {
+  const row = await env.DB.prepare('SELECT tu_vi, enabled FROM cultivation WHERE user_id = ?').bind(userId).first();
+  const tuVi = row ? row.tu_vi : 0;
+  return { tu_vi: tuVi, enabled: row ? !!row.enabled : true, realm: realmFor(tuVi) };
 }
 
 async function ownsBook(env, bookId, userId) {
@@ -395,11 +442,104 @@ async function handleRequest(request, env, ctx) {
       return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
     }
 
-    if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/history') || path.startsWith('/api/last-read') || path.startsWith('/api/settings'))) {
+    if (!userSession && (path.startsWith('/api/books') || path.startsWith('/api/cultivation') || path.startsWith('/api/reading') || path.startsWith('/api/history') || path.startsWith('/api/last-read') || path.startsWith('/api/settings'))) {
       return errorResponse('Chưa đăng nhập. Vui lòng đăng nhập để sử dụng.', 401);
     }
 
     const userId = userSession?.userId;
+
+    // Tu vi: trạng thái hiện tại
+    if (path === '/api/cultivation' && request.method === 'GET') {
+      return jsonResponse(await cultivationState(env, userId));
+    }
+
+    // Tu vi: bật/tắt hiển thị (máy chủ vẫn ghi tu vi khi tắt)
+    if (path === '/api/cultivation' && request.method === 'PUT') {
+      let body;
+      try { body = await request.json(); } catch { return errorResponse('Dữ liệu không hợp lệ', 400); }
+      if (!body || typeof body.enabled !== 'boolean') return errorResponse('Dữ liệu không hợp lệ', 400);
+      await env.DB.prepare(
+        `INSERT INTO cultivation (user_id, enabled) VALUES (?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET enabled = excluded.enabled`
+      ).bind(userId, body.enabled ? 1 : 0).run();
+      return jsonResponse(await cultivationState(env, userId));
+    }
+
+    // Tu vi: cộng hồi tố một lần duy nhất từ tiến độ đọc có sẵn (các chương đứng trước chương đang đọc)
+    if (path === '/api/cultivation/backfill' && request.method === 'POST') {
+      await env.DB.prepare('INSERT OR IGNORE INTO cultivation (user_id) VALUES (?)').bind(userId).run();
+      const claim = await env.DB.prepare('UPDATE cultivation SET backfilled = 1 WHERE user_id = ? AND backfilled = 0')
+        .bind(userId).run();
+      if (!claim.meta || claim.meta.changes === 0) {
+        return jsonResponse({ gained: 0, ...(await cultivationState(env, userId)) });
+      }
+      try {
+        const { results: books } = await env.DB.prepare(
+          'SELECT id, total_chapters, chapters_json, current_chapter FROM books WHERE user_id = ?'
+        ).bind(userId).all();
+        let total = 0;
+        for (const b of books || []) {
+          const upTo = Math.min((b.current_chapter || 1) - 1, b.total_chapters);
+          for (let i = 1; i <= upTo; i++) {
+            const { content_html } = await loadChapterContent(env, ctx, b, b.id, i);
+            total += paragraphWordCounts(content_html).reduce((s, n) => s + n, 0);
+          }
+        }
+        const before = (await cultivationState(env, userId)).tu_vi;
+        const gained = Math.max(0, Math.min(total, MAX_TU_VI - before));
+        await env.DB.prepare('UPDATE cultivation SET tu_vi = tu_vi + ? WHERE user_id = ?').bind(gained, userId).run();
+        return jsonResponse({ gained, ...(await cultivationState(env, userId)) });
+      } catch (e) {
+        await env.DB.prepare('UPDATE cultivation SET backfilled = 0 WHERE user_id = ?').bind(userId).run();
+        throw e;
+      }
+    }
+
+    // Tu vi: báo đã đọc các đoạn [from_para, to_para] của một chương trong `seconds` giây.
+    // Máy chủ tự đếm từ từ nội dung chương và chặn đọc nhanh hơn tốc độ cho phép.
+    if (path === '/api/reading/report' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return errorResponse('Dữ liệu không hợp lệ', 400); }
+      const { book_id: bookId, chapter_index: chapterIdx, from_para: fromPara, to_para: toPara, seconds } = body || {};
+      if (typeof bookId !== 'string' || !Number.isInteger(chapterIdx) || !Number.isInteger(fromPara) ||
+          !Number.isInteger(toPara) || typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+        return errorResponse('Dữ liệu không hợp lệ', 400);
+      }
+      const record = await env.DB.prepare('SELECT total_chapters, chapters_json FROM books WHERE id = ? AND user_id = ?')
+        .bind(bookId, userId)
+        .first();
+      if (!record) return errorResponse('Không tìm thấy sách', 404);
+      if (chapterIdx < 1 || chapterIdx > record.total_chapters) return errorResponse('Chương không hợp lệ', 400);
+
+      const { content_html } = await loadChapterContent(env, ctx, record, bookId, chapterIdx);
+      const counts = paragraphWordCounts(content_html);
+      const from = Math.max(0, fromPara);
+      const to = Math.min(counts.length - 1, toPara);
+      let words = 0;
+      for (let i = from; i <= to; i++) words += counts[i];
+
+      const now = Date.now();
+      const row = await env.DB.prepare('SELECT tu_vi, last_report_at FROM cultivation WHERE user_id = ?').bind(userId).first();
+      const before = row ? row.tu_vi : 0;
+      const sinceLast = row && row.last_report_at ? Math.max(0, (now - row.last_report_at) / 1000) : MAX_REPORT_SECONDS;
+      const allowedSeconds = Math.max(0, Math.min(seconds, sinceLast, MAX_REPORT_SECONDS));
+      const gained = Math.max(0, Math.min(words, Math.floor(allowedSeconds * MAX_WORDS_PER_SECOND), MAX_TU_VI - before));
+
+      await env.DB.prepare(
+        `INSERT INTO cultivation (user_id, tu_vi, last_report_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET tu_vi = tu_vi + excluded.tu_vi, last_report_at = excluded.last_report_at`
+      ).bind(userId, gained, now).run();
+
+      const after = before + gained;
+      const rBefore = realmFor(before);
+      const rAfter = realmFor(after);
+      return jsonResponse({
+        gained,
+        tu_vi: after,
+        realm: rAfter,
+        breakthrough: rBefore.name !== rAfter.name || rBefore.tang !== rAfter.tang,
+      });
+    }
 
     // 3. Books: List books
     if (path === '/api/books' && request.method === 'GET') {
@@ -686,41 +826,7 @@ async function handleRequest(request, env, ctx) {
 
       if (!record) return errorResponse('Không tìm thấy sách', 404);
 
-      const chapterRow = await env.DB.prepare(
-        'SELECT title, content FROM chapters WHERE book_id = ? AND chapter_index = ?'
-      ).bind(bookId, chapterIdx).first();
-
-      let title = `Chương ${chapterIdx}`;
-      let content_html = '';
-
-      if (chapterRow) {
-        title = chapterRow.title;
-        content_html = chapterRow.content;
-      } else {
-        // Extract chapter on-the-fly (EPUB lấy từ R2 hoặc book_chunks, có cache trong bộ nhớ instance)
-        const zip = await getBookZip(env, bookId);
-
-        if (zip) {
-          const toc = await decodeTocJson(record.chapters_json, env, bookId);
-          const targetCh = toc.find(c => c.index === chapterIdx);
-          title = targetCh?.title || `Chương ${chapterIdx}`;
-
-          content_html = await extractChapterContent(zip, toc, chapterIdx, targetCh);
-          content_html = stripDuplicateHeading(content_html, title);
-
-          // Cache in chapters table so subsequent reads are instant (< 2ms)
-          if (content_html) {
-            // waitUntil: nếu không, Worker có thể bị cắt ngay khi trả phản hồi và bản cache không được ghi
-            const cacheWrite = env.DB.prepare(`
-              INSERT INTO chapters (book_id, chapter_index, title, content)
-              VALUES (?, ?, ?, ?)
-              ON CONFLICT (book_id, chapter_index)
-              DO UPDATE SET content = excluded.content, title = excluded.title
-            `).bind(bookId, chapterIdx, title, content_html).run().catch(e => console.error('Chapter cache error:', e));
-            if (ctx?.waitUntil) ctx.waitUntil(cacheWrite);
-          }
-        }
-      }
+      const { title, content_html } = await loadChapterContent(env, ctx, record, bookId, chapterIdx);
 
       return jsonResponse({
         book_id: bookId,
@@ -1160,6 +1266,15 @@ async function initTables(db) {
         key TEXT PRIMARY KEY,
         count INTEGER NOT NULL,
         reset_at INTEGER NOT NULL
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS cultivation (
+        user_id TEXT PRIMARY KEY,
+        tu_vi INTEGER NOT NULL DEFAULT 0,
+        last_report_at INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        backfilled INTEGER NOT NULL DEFAULT 0
       )
     `).run();
 

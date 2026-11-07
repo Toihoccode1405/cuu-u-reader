@@ -83,5 +83,13 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   reset_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cultivation (
+  user_id TEXT PRIMARY KEY,
+  tu_vi INTEGER NOT NULL DEFAULT 0,
+  last_report_at INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  backfilled INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_books_user_added ON books (user_id, added_at DESC);
 CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress (user_id, updated_at DESC);
