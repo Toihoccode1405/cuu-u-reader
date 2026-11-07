@@ -35,3 +35,9 @@ Cao_Truyen/
 # Wrangler local state (DB local, cache, log)
 .wrangler/
 .dev.vars
+
+# Test
+e2e/node_modules/
+e2e/.state/
+e2e/test-results/
+e2e/playwright-report/

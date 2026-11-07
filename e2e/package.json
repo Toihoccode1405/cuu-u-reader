@@ -1,0 +1,7 @@
+{
+  "name": "cuu-u-reader-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "^1.55.0", "jszip": "^3.10.1" }
+}

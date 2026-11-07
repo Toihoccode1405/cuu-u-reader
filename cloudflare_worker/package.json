@@ -5,5 +5,14 @@
   "type": "module",
   "dependencies": {
     "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.6.0",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.158.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }
