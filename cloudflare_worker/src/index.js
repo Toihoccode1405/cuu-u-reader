@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { extractChapterRaw, safeDecodeURI } from '../../shared/epub-chapter.js';
 
 const CSP = [
   "default-src 'self'",
@@ -585,6 +586,55 @@ async function handleRequest(request, env, ctx) {
       });
     }
 
+    // 4.2 Chương đã tách của một sách (để trình duyệt biết còn thiếu chương nào mà Tách bù)
+    const matchExtracted = path.match(/^\/api\/books\/([^\/]+)\/extracted$/);
+    if (matchExtracted && request.method === 'GET') {
+      const bookId = matchExtracted[1];
+      const book = await env.DB.prepare('SELECT total_chapters FROM books WHERE id = ? AND user_id = ?')
+        .bind(bookId, userId)
+        .first();
+      if (!book) return errorResponse('Không tìm thấy sách', 404);
+      const { results } = await env.DB.prepare(
+        'SELECT chapter_index FROM chapters WHERE book_id = ? ORDER BY chapter_index ASC'
+      ).bind(bookId).all();
+      return jsonResponse({ total: book.total_chapters, extracted: (results || []).map(r => r.chapter_index) });
+    }
+
+    // 4.3 Nhận một lô chương đã được trình duyệt cắt sẵn từ EPUB (Tách chương / Tách bù).
+    // Máy chủ vẫn tự lọc HTML và KHÔNG ghi đè chương đã có (kể cả chương người đọc đã tự sửa).
+    const matchBatch = path.match(/^\/api\/books\/([^\/]+)\/chapters\/batch$/);
+    if (matchBatch && request.method === 'POST') {
+      const bookId = matchBatch[1];
+      const book = await env.DB.prepare('SELECT total_chapters, chapters_json FROM books WHERE id = ? AND user_id = ?')
+        .bind(bookId, userId)
+        .first();
+      if (!book) return errorResponse('Không tìm thấy sách', 404);
+
+      const body = await request.json();
+      if (!body || !Array.isArray(body.chapters)) return errorResponse('Dữ liệu không hợp lệ', 400);
+      if (body.chapters.length > MAX_BATCH_CHAPTERS) return errorResponse('Gửi quá nhiều chương một lần', 413);
+
+      const toc = await decodeTocJson(book.chapters_json, env, bookId);
+      const titles = new Map(toc.map(c => [c.index, c.title]));
+      const statements = [];
+      for (const item of body.chapters) {
+        const index = item?.index;
+        if (!Number.isInteger(index) || index < 1 || index > book.total_chapters) continue;
+        if (typeof item.raw_html !== 'string') continue;
+        if (item.raw_html.length > MAX_CHAPTER_RAW_CHARS) return errorResponse('Một chương quá lớn', 413);
+        const title = titles.get(index) || `Chương ${index}`;
+        const html = stripDuplicateHeading(cleanXhtml(item.raw_html), title);
+        if (!html) continue;
+        statements.push(
+          env.DB.prepare(
+            'INSERT INTO chapters (book_id, chapter_index, title, content) VALUES (?, ?, ?, ?) ON CONFLICT (book_id, chapter_index) DO NOTHING'
+          ).bind(bookId, index, title, html)
+        );
+      }
+      if (statements.length > 0) await env.DB.batch(statements);
+      return jsonResponse({ stored: statements.length });
+    }
+
     // 5. Books: Get Detail & TOC
     const matchDetail = path.match(/^\/api\/books\/([^\/]+)$/);
     if (matchDetail && request.method === 'GET') {
@@ -1141,6 +1191,10 @@ async function initTables(db) {
 // anchor to the next chapter anchor inside the same file.
 const TOC_VERSION = 2;
 
+// Giới hạn lô chương trình duyệt gửi lên (Tách chương / Tách bù)
+const MAX_BATCH_CHAPTERS = 40;
+const MAX_CHAPTER_RAW_CHARS = 500_000;
+
 function toBase64Fast(u8) {
   let binary = '';
   const len = u8.byteLength;
@@ -1278,40 +1332,6 @@ async function decodeTocJson(str, env, bookId) {
   }
 }
 
-function safeDecodeURI(uri) {
-  try {
-    return decodeURIComponent(uri);
-  } catch (e) {
-    return uri;
-  }
-}
-
-function anchorOffset(html, anchor) {
-  if (!anchor) return -1;
-  const decodedAnchor = safeDecodeURI(anchor);
-  let pos = -1;
-  const candidates = anchor === decodedAnchor ? [anchor] : [anchor, decodedAnchor];
-  for (const a of candidates) {
-    for (const p of [`id="${a}"`, `id='${a}'`, `name="${a}"`, `name='${a}'`]) {
-      const i = html.indexOf(p);
-      if (i >= 0 && (pos < 0 || i < pos)) pos = i;
-    }
-  }
-  if (pos < 0) return -1;
-  const lt = html.lastIndexOf('<', pos);
-  return lt >= 0 ? lt : pos;
-}
-
-function splitHref(href) {
-  const raw = (href || '').trim();
-  const hashAt = raw.indexOf('#');
-  if (hashAt < 0) return { file: safeDecodeURI(raw).replace(/\\/g, '/'), anchor: '' };
-  return {
-    file: safeDecodeURI(raw.slice(0, hashAt)).replace(/\\/g, '/'),
-    anchor: safeDecodeURI(raw.slice(hashAt + 1))
-  };
-}
-
 async function reindexBook(env, record) {
   try {
     const { results: chunkRows } = await env.DB.prepare(
@@ -1366,36 +1386,8 @@ async function reindexBook(env, record) {
 }
 
 async function extractChapterContent(zip, toc, chapterIdx, targetCh) {
-  if (!targetCh || !targetCh.href) return '';
-
-  const { file, anchor } = splitHref(targetCh.href);
-  const chFile = findZipFile(zip, file);
-  if (!chFile) return '';
-
-  const raw = await chFile.async('text');
-
-  // Mục đầu tiên của mỗi file trong NCX KHÔNG kèm #fragment (ví dụ
-  // "1/1/OEBPS/text00033.html"), trong khi các mục sau trong cùng file thì có.
-  // Trước đây gặp trường hợp này là trả về nguyên file -> chương chứa luôn
-  // tiêu đề của hàng chục chương kế tiếp, không khớp với tiêu đề đã chọn.
-  // Nay: không có anchor => chương bắt đầu từ đầu file, và vẫn phải cắt tại
-  // anchor của chương kế tiếp trong cùng file.
-  const found = anchor ? anchorOffset(raw, anchor) : 0;
-  if (anchor && found < 0) return cleanXhtml(raw);
-  const start = found >= 0 ? found : 0;
-
-  // Nearest following chapter anchor inside the same file closes this chapter.
-  let end = -1;
-  for (const c of toc) {
-    if (!c || c.index <= chapterIdx) continue;
-    const other = splitHref(c.href);
-    if (other.file !== file || !other.anchor) continue;
-    const off = anchorOffset(raw, other.anchor);
-    if (off > start && (end < 0 || off < end)) end = off;
-  }
-
-  const slice = end > start ? raw.slice(start, end) : raw.slice(start);
-  return cleanXhtml(slice);
+  const raw = await extractChapterRaw(zip, toc, chapterIdx, targetCh, findZipFile);
+  return raw ? cleanXhtml(raw) : '';
 }
 
 function parseNcxEntries(ncxXml) {

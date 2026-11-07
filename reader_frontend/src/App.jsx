@@ -8,6 +8,7 @@ import {
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
+import { prepareChapters } from './chapterPrep';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
 export default function App() {
@@ -79,6 +80,8 @@ export default function App() {
     };
   });
 
+  const prepAbortRef = useRef(null);
+  const [prepProgress, setPrepProgress] = useState(null);
   const lastScrollTopRef = useRef(0);
   const scrollTimeoutRef = useRef(null);
   const pendingRestoreRef = useRef(null);
@@ -267,7 +270,25 @@ export default function App() {
     loadUserData();
   };
 
+  // Tách chương ở nền (xem chapterPrep.js). Hủy khi đăng xuất.
+  const startChapterPrep = (bookId, toc, getSource) => {
+    if (!toc || !toc.length) return;
+    if (!prepAbortRef.current) prepAbortRef.current = new AbortController();
+    prepareChapters({
+      bookId,
+      toc,
+      getSource,
+      signal: prepAbortRef.current.signal,
+      onProgress: setPrepProgress,
+    });
+  };
+
   const handleLogout = () => {
+    if (prepAbortRef.current) {
+      prepAbortRef.current.abort();
+      prepAbortRef.current = null;
+    }
+    setPrepProgress(null);
     // Báo máy chủ xóa cookie phiên (thiết bị khác vẫn đăng nhập); không chờ kết quả
     fetch(getApiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => {});
     setCloudUser(null);
@@ -372,6 +393,9 @@ export default function App() {
         try {
           const newBook = JSON.parse(xhr.responseText);
           showToast(`Đã thêm thành công: ${newBook.title}!`);
+          if (newBook.id && clientMetadata && clientMetadata.chapters) {
+            startChapterPrep(newBook.id, clientMetadata.chapters, async () => file);
+          }
         } catch {
           showToast('Đã thêm sách thành công!');
         }
@@ -503,6 +527,14 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'instant' });
 
       await loadBookmarks(bookId);
+
+      // Sách cũ chưa được tách chương: tách bù ở nền (chỉ tải file EPUB khi còn chương thiếu)
+      if (bookData.chapters && bookData.chapters.length && bookData.chapters[0].href) {
+        startChapterPrep(bookId, bookData.chapters, async () => {
+          const r = await fetch(getApiUrl(`/api/books/${bookId}/file`));
+          return r.ok ? r.blob() : null;
+        });
+      }
 
       const para = restorePara !== null ? restorePara : (bookData.record.para_index || 0);
       const pct = restoreScroll || bookData.record.scroll_percent || 0;
@@ -2105,6 +2137,12 @@ export default function App() {
               <span className="upload-status-text">{uploadProgress.statusText}</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {prepProgress && (
+        <div className="prep-pill" role="status" aria-live="polite">
+          Đang chuẩn bị chương: {prepProgress.done}/{prepProgress.total}
         </div>
       )}
 

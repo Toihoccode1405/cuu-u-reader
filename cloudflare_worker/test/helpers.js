@@ -71,6 +71,30 @@ export async function buildEpub({ title = 'Sach Thu', chapters = ['Doan mot', 'D
   return z.generateAsync({ type: 'uint8array' });
 }
 
+// EPUB kiểu "nhiều chương trong một file XHTML", mỗi chương bắt đầu ở một anchor (#a1, #a2, ...)
+export async function buildAnchoredEpub({ title = 'Mot File', chapters = ['Chuong A', 'Chuong B', 'Chuong C'] } = {}) {
+  const z = new JSZip();
+  z.file('mimetype', 'application/epub+zip');
+  z.file(
+    'META-INF/container.xml',
+    '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+  );
+  z.file(
+    'OEBPS/content.opf',
+    `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title><dc:creator>Tac Gia</dc:creator></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="all" href="all.xhtml" media-type="application/xhtml+xml"/></manifest><spine toc="ncx"><itemref idref="all"/></spine></package>`
+  );
+  const points = chapters
+    .map(
+      (name, i) =>
+        `<navPoint id="n${i + 1}"><navLabel><text>${name}</text></navLabel><content src="all.xhtml#a${i + 1}"/></navPoint>`
+    )
+    .join('');
+  z.file('OEBPS/toc.ncx', `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>${points}</navMap></ncx>`);
+  const body = chapters.map((name, i) => `<h2 id="a${i + 1}">${name}</h2><p>Noi dung cua ${name}</p>`).join('');
+  z.file('OEBPS/all.xhtml', `<html><body>${body}</body></html>`);
+  return z.generateAsync({ type: 'uint8array' });
+}
+
 export async function uploadBook(token, epubBytes, filename = 'sach.epub') {
   const fd = new FormData();
   fd.append('file', new Blob([epubBytes]), filename);
