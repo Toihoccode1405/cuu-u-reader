@@ -137,7 +137,7 @@ html[data-theme="ink"] {
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   transition: background-color 0.25s ease, color 0.25s ease;
   min-height: 100vh;
   overflow-x: hidden;
@@ -145,32 +145,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Fonts (tất cả đều có subset tiếng Việt) */
-.font-athelas { font-family: 'Athelas', 'New York', 'Palatino', 'Lora', Georgia, serif; }
+/* Fonts tự host (@fontsource, subset latin + tiếng Việt). Font không còn trong danh sách rơi về Athelas */
+.font-athelas,
+.font-newsreader,
+.font-noto-serif-display,
+.font-eb-garamond,
+.font-cormorant,
+.font-playfair,
+.font-spectral,
+.font-vollkorn,
+.font-source-serif,
+.font-alegreya,
+.font-crimson,
+.font-gelasio,
+.font-petrona,
+.font-noticia,
+.font-bitter,
+.font-faustina { font-family: 'Athelas', 'New York', 'Palatino', 'Lora Variable', Georgia, serif; }
 .font-palatino { font-family: 'Palatino', 'Palatino Linotype', 'Book Antiqua', Georgia, serif; }
 .font-charter { font-family: 'Charter', 'Bitstream Charter', Georgia, serif; }
-.font-newsreader { font-family: 'Newsreader', 'Lora', Georgia, serif; }
-.font-literata { font-family: 'Literata', Georgia, serif; }
+.font-literata { font-family: 'Literata Variable', Georgia, serif; }
 .font-merriweather { font-family: 'Merriweather', Georgia, serif; }
-.font-lora { font-family: 'Lora', Georgia, serif; }
+.font-lora { font-family: 'Lora Variable', Georgia, serif; }
 .font-vietnam,
 .font-be-vietnam { font-family: 'Be Vietnam Pro', sans-serif; }
-.font-inter { font-family: 'Inter', sans-serif; }
-.font-playfair { font-family: 'Playfair Display', Georgia, serif; }
-.font-eb-garamond { font-family: 'EB Garamond', Garamond, Georgia, serif; }
-.font-cormorant { font-family: 'Cormorant Garamond', Garamond, Georgia, serif; }
-.font-noto-serif { font-family: 'Noto Serif', Georgia, serif; }
-.font-noto-serif-display { font-family: 'Noto Serif Display', Georgia, serif; }
-.font-spectral { font-family: 'Spectral', Georgia, serif; }
-.font-vollkorn { font-family: 'Vollkorn', Georgia, serif; }
-.font-source-serif { font-family: 'Source Serif 4', Georgia, serif; }
-.font-alegreya { font-family: 'Alegreya', Georgia, serif; }
-.font-crimson { font-family: 'Crimson Pro', Georgia, serif; }
-.font-gelasio { font-family: 'Gelasio', Georgia, serif; }
-.font-petrona { font-family: 'Petrona', Georgia, serif; }
-.font-noticia { font-family: 'Noticia Text', Georgia, serif; }
-.font-bitter { font-family: 'Bitter', Georgia, serif; }
-.font-faustina { font-family: 'Faustina', Georgia, serif; }
+.font-inter { font-family: 'Inter Variable', sans-serif; }
+.font-noto-serif { font-family: 'Noto Serif Variable', Georgia, serif; }
 
 /* Chữ tiêu đề mang hơi hướng cổ điển */
 .chapter-header-title,
@@ -180,7 +180,7 @@ body {
   letter-spacing: 0.01em;
 }
 .chapter-header-title {
-  font-family: 'Noto Serif Display', 'Literata', Georgia, serif;
+  font-family: 'Noto Serif Variable', 'Literata Variable', Georgia, serif;
 }
 
 /* Buttons */
