@@ -265,6 +265,8 @@ export default function App() {
 
   const handleLoginSuccess = (user) => {
     setCloudUser(user);
+    // Để Service Worker lưu thông tin phiên cho lần mở offline
+    fetch(getApiUrl('/api/auth/me')).catch(() => {});
     setView('library');
     showToast(`Chào mừng ${user.username}!`);
     loadUserData();
@@ -289,6 +291,8 @@ export default function App() {
       prepAbortRef.current = null;
     }
     setPrepProgress(null);
+    // Xóa dữ liệu đọc đã lưu cho chế độ offline của tài khoản này
+    if (typeof caches !== 'undefined') caches.delete('cuu-data-v1').catch(() => {});
     // Báo máy chủ xóa cookie phiên (thiết bị khác vẫn đăng nhập); không chờ kết quả
     fetch(getApiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => {});
     setCloudUser(null);
