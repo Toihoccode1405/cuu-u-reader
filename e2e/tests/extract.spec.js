@@ -46,7 +46,7 @@ test('Tách bù: mở sách cũ chưa được tách thì chương được bổ
   expect((await extractedCount(page, bookId)).count).toBe(0);
 
   await page.reload();
-  await page.getByText('Sach Cu').first().click();
+  await page.getByRole('heading', { name: 'Sach Cu', level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 20_000 });
 
   // Chương còn lại được tách bù ở nền
@@ -66,7 +66,7 @@ test('Tách bù không ghi đè chương người đọc đã sửa', async ({ p
   });
 
   await page.reload();
-  await page.getByText('Sach Sua').first().click();
+  await page.getByRole('heading', { name: 'Sach Sua', level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 20_000 });
   await expect.poll(() => extractedCount(page, bookId).then((r) => r.count), { timeout: 20_000 }).toBe(3);
 

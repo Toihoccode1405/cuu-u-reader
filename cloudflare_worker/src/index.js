@@ -521,14 +521,18 @@ async function handleRequest(request, env, ctx) {
       const now = Date.now();
       const row = await env.DB.prepare('SELECT tu_vi, last_report_at FROM cultivation WHERE user_id = ?').bind(userId).first();
       const before = row ? row.tu_vi : 0;
-      const sinceLast = row && row.last_report_at ? Math.max(0, (now - row.last_report_at) / 1000) : MAX_REPORT_SECONDS;
+      const lastAt = row ? row.last_report_at : 0;
+      // `at`: thời điểm thật lúc đọc (báo cáo gom khi offline rồi gửi bù). Không vượt quá hiện tại và không lùi trước lần báo trước,
+      // nên tổng tu vi vẫn bị chặn bởi thời gian thật đã trôi qua.
+      const at = typeof body.at === 'number' && Number.isFinite(body.at) ? Math.min(now, Math.max(body.at, lastAt)) : now;
+      const sinceLast = lastAt ? Math.max(0, (at - lastAt) / 1000) : MAX_REPORT_SECONDS;
       const allowedSeconds = Math.max(0, Math.min(seconds, sinceLast, MAX_REPORT_SECONDS));
       const gained = Math.max(0, Math.min(words, Math.floor(allowedSeconds * MAX_WORDS_PER_SECOND), MAX_TU_VI - before));
 
       await env.DB.prepare(
         `INSERT INTO cultivation (user_id, tu_vi, last_report_at) VALUES (?, ?, ?)
          ON CONFLICT (user_id) DO UPDATE SET tu_vi = tu_vi + excluded.tu_vi, last_report_at = excluded.last_report_at`
-      ).bind(userId, gained, now).run();
+      ).bind(userId, gained, Math.max(at, lastAt)).run();
 
       const after = before + gained;
       const rBefore = realmFor(before);

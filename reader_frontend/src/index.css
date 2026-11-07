@@ -2390,3 +2390,31 @@ input[type="range"] {
   color: #fff;
   pointer-events: none;
 }
+
+.cultivation-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 96px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.cultivation-realm { font-weight: 600; white-space: nowrap; }
+.cultivation-bar { display: block; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
+.cultivation-bar > span { display: block; height: 100%; background: var(--accent-color, #b8860b); transition: width 0.4s; }
+.cultivation-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.breakthrough-banner {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: #3a2a0a;
+  color: #ffd76a;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}

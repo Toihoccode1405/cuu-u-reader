@@ -25,7 +25,7 @@ test('đăng ký, đưa sách lên, đọc chương, đăng xuất', async ({ pa
   await expect(page.getByText('Sach E2E').first()).toBeVisible({ timeout: 20_000 });
 
   // Mở sách và thấy nội dung chương 1
-  await page.getByText('Sach E2E').first().click();
+  await page.getByRole('heading', { name: 'Sach E2E', level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 20_000 });
 
   // Sang chương kế bằng nút chuyển chương

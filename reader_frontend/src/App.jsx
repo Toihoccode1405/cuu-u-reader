@@ -9,6 +9,7 @@ import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
 import { getApiUrl } from './api';
 import { prepareChapters } from './chapterPrep';
+import { fetchCultivation, runBackfill, setCultivationEnabled, submitReading, flushReportQueue, hasQueuedReports, clearReportQueue } from './cultivation';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
 export default function App() {
@@ -82,6 +83,25 @@ export default function App() {
 
   const prepAbortRef = useRef(null);
   const [prepProgress, setPrepProgress] = useState(null);
+
+  // Tu vi / cảnh giới (máy chủ tính; ở đây chỉ hiển thị và báo "đã đọc đoạn nào")
+  const [cultivation, setCultivation] = useState(null);
+  const [breakthrough, setBreakthrough] = useState(null);
+  const cultivationRef = useRef(null);
+  cultivationRef.current = cultivation;
+  const breakthroughTimerRef = useRef(null);
+
+  const applyReports = useCallback((results) => {
+    if (!results || !results.length) return;
+    const last = results[results.length - 1];
+    setCultivation(prev => (prev ? { ...prev, tu_vi: last.tu_vi, realm: last.realm } : prev));
+    const bt = [...results].reverse().find(r => r.breakthrough);
+    if (bt && cultivationRef.current && cultivationRef.current.enabled !== false) {
+      setBreakthrough(bt.realm);
+      clearTimeout(breakthroughTimerRef.current);
+      breakthroughTimerRef.current = setTimeout(() => setBreakthrough(null), 5000);
+    }
+  }, []);
   const lastScrollTopRef = useRef(0);
   const scrollTimeoutRef = useRef(null);
   const pendingRestoreRef = useRef(null);
@@ -259,6 +279,89 @@ export default function App() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [cloudUser, view, loadUserData]);
 
+  // Khi đăng nhập: cộng hồi tố (một lần), lấy trạng thái tu vi, gửi bù báo cáo còn kẹt
+  useEffect(() => {
+    if (!cloudUser) return;
+    let off = false;
+    (async () => {
+      await runBackfill();
+      const state = await fetchCultivation();
+      if (!off && state) setCultivation(state);
+      const flushed = await flushReportQueue();
+      if (!off) applyReports(flushed.results);
+    })();
+    return () => { off = true; };
+  }, [cloudUser?.id, applyReports]);
+
+  // Có mạng lại (hoặc định kỳ khi còn báo cáo kẹt): gửi bù
+  useEffect(() => {
+    if (!cloudUser) return;
+    const retry = async () => {
+      if (!hasQueuedReports()) return;
+      const flushed = await flushReportQueue();
+      applyReports(flushed.results);
+    };
+    window.addEventListener('online', retry);
+    const id = setInterval(retry, 20000);
+    return () => { window.removeEventListener('online', retry); clearInterval(id); };
+  }, [cloudUser?.id, applyReports]);
+
+  // Theo dõi đoạn đang hiện trên màn hình mỗi giây và báo cho máy chủ mỗi 10 giây (hoặc khi đổi chương/ẩn trang)
+  const readingBookId = currentBook?.record?.id;
+  const readingChapter = currentChapter?.chapter_index;
+  useEffect(() => {
+    if (view !== 'reader' || !readingBookId || !readingChapter) return;
+    const acc = { from: Infinity, to: -1, seconds: 0 };
+    const flush = () => {
+      if (acc.seconds >= 1 && acc.to >= acc.from) {
+        const report = {
+          book_id: readingBookId,
+          chapter_index: readingChapter,
+          from_para: acc.from,
+          to_para: acc.to,
+          seconds: acc.seconds,
+          at: Date.now(),
+        };
+        submitReading(report).then(applyReports);
+      }
+      acc.from = Infinity; acc.to = -1; acc.seconds = 0;
+    };
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      const blocks = document.querySelectorAll('.reader-body [data-p]');
+      let seen = false;
+      blocks.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.bottom > 0 && r.top < window.innerHeight) {
+          const i = Number(el.getAttribute('data-p'));
+          if (Number.isInteger(i)) {
+            acc.from = Math.min(acc.from, i);
+            acc.to = Math.max(acc.to, i);
+            seen = true;
+          }
+        }
+      });
+      if (seen) acc.seconds += 1;
+      if (acc.seconds >= 10) flush();
+    };
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    const id = setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [view, readingBookId, readingChapter, applyReports]);
+
+  const handleToggleCultivation = async (enabled) => {
+    setCultivation(prev => (prev ? { ...prev, enabled } : prev));
+    const state = await setCultivationEnabled(enabled);
+    if (state) setCultivation(state);
+  };
+
   // ---------------------------------------------------------------------------
   // AUTHENTICATION HANDLERS
   // ---------------------------------------------------------------------------
@@ -291,6 +394,9 @@ export default function App() {
       prepAbortRef.current = null;
     }
     setPrepProgress(null);
+    setCultivation(null);
+    setBreakthrough(null);
+    clearReportQueue();
     // Xóa dữ liệu đọc đã lưu cho chế độ offline của tài khoản này
     if (typeof caches !== 'undefined') caches.delete('cuu-data-v1').catch(() => {});
     // Báo máy chủ xóa cookie phiên (thiết bị khác vẫn đăng nhập); không chờ kết quả
@@ -1306,6 +1412,16 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {cultivation && cultivation.enabled && (
+                  <div
+                    className="cultivation-chip"
+                    data-testid="cultivation-chip"
+                    title={`${cultivation.realm.buoc_name}${cultivation.realm.alias ? ` · ${cultivation.realm.alias}` : ''} · ${cultivation.tu_vi.toLocaleString('vi-VN')} tu vi`}
+                  >
+                    <span className="cultivation-realm">{cultivation.realm.name} · tầng {cultivation.realm.tang}</span>
+                    <span className="cultivation-bar"><span style={{ width: `${Math.round(cultivation.realm.progress * 100)}%` }} /></span>
+                  </div>
+                )}
                 {/* User Profile Badge */}
                 {cloudUser && (
                   <div className="user-badge" title="Tài khoản đang đăng nhập">
@@ -1731,6 +1847,15 @@ export default function App() {
                   ))}
                 </div>
 
+                <label className="settings-label cultivation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={!cultivation || cultivation.enabled}
+                    onChange={(e) => handleToggleCultivation(e.target.checked)}
+                  />
+                  {' '}Hệ thống tu tiên
+                </label>
+
                 <label className="settings-label">Cỡ Chữ: {settings.fontSize}px</label>
                 <div className="setting-range-row">
                   <button
@@ -2126,6 +2251,12 @@ export default function App() {
               <span className="upload-status-text">{uploadProgress.statusText}</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {breakthrough && (
+        <div className="breakthrough-banner" role="status" aria-live="polite">
+          <strong>Đột phá!</strong> {breakthrough.name} · tầng {breakthrough.tang}
         </div>
       )}
 

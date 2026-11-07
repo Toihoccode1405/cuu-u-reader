@@ -31,12 +31,17 @@ Với 2 giờ đọc mỗi ngày (~13 triệu từ/năm) thì đầy trong kho�
 ## API
 - `GET /api/cultivation` -> `{ tu_vi, enabled, realm: { name, alias, buoc, buoc_name, qua_do, tang, tangs, progress, max } }`
 - `PUT /api/cultivation` `{ enabled: boolean }`
-- `POST /api/reading/report` `{ book_id, chapter_index, from_para, to_para, seconds }` -> `{ gained, tu_vi, realm, breakthrough }`
+- `POST /api/reading/report` `{ book_id, chapter_index, from_para, to_para, seconds, at? }` -> `{ gained, tu_vi, realm, breakthrough }`
 - `POST /api/cultivation/backfill` -> `{ gained, tu_vi, enabled, realm }` (lần sau gained = 0)
 - Mọi endpoint cần cookie phiên; ghi cần Origin hợp lệ; sách phải thuộc người đọc (404).
 
 ## Kiểm thử
 `cloudflare_worker/test/cultivation.test.js` (seam S6, S6b, S6c; dùng đồng hồ giả). Đã kiểm đột biến: bỏ trần tốc độ, bỏ ràng buộc thời gian thật, bỏ kiểm tra sở hữu, cho phép cộng hồi tố nhiều lần, lệch số tầng đều làm test đỏ.
 
-## Giao diện (phần sau, seam S5)
-Thanh tu vi trong thư các, thông báo "Đột phá!", công tắc ẩn/hiện, gom báo cáo khi offline rồi gửi lại.
+## Giao diện
+- Thư các: chip "Cảnh giới · tầng N" kèm thanh tiến độ tầng; di chuột xem Bước và tu vi. Bấm công tắc "Hệ thống tu tiên" trong cài đặt khi đọc để ẩn/hiện.
+- Khi đọc: mỗi giây ghi nhận các đoạn đang hiện trên màn hình (chỉ khi trang đang hiển thị); cứ 10 giây, hoặc khi đổi chương hoặc ẩn trang, gửi một báo cáo.
+- Lên tầng hoặc cảnh giới: hiện "Đột phá!" 5 giây (chỉ khi hệ thống đang bật).
+- Mất mạng: báo cáo xếp vào hàng đợi trong localStorage (tối đa 200), gửi bù theo thứ tự khi có mạng. Mỗi báo cáo mang `at` (thời điểm thật lúc đọc); máy chủ chặn `at` không vượt hiện tại và không lùi trước lần báo trước, nên tổng tu vi vẫn bị giới hạn bởi thời gian thật.
+- Đăng xuất xóa hàng đợi.
+- E2E: `e2e/tests/cultivation.spec.js` (S5): chip, Đột phá, công tắc, offline gom và gửi bù; đã kiểm đột biến (bỏ lưu hàng đợi, chip bỏ qua công tắc).

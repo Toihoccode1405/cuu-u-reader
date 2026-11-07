@@ -260,3 +260,34 @@ describe('S6 - Công tắc hệ thống tu tiên', () => {
     expect((await cultivation(token)).enabled).toBe(true);
   });
 });
+
+describe('S6 - Báo đọc có thời điểm (gom khi offline rồi gửi lại)', () => {
+  const para = (book) => ({ book_id: book.id, chapter_index: 1, from_para: 0, to_para: 0 });
+
+  it('gửi lại hàng đợi theo thứ tự: mỗi báo cáo được tính theo thời điểm thật lúc đọc', async () => {
+    const { token, book } = await bookWith([1000]);
+    advance(150); // đã mất mạng 150 giây, lúc này mới gửi bù ba báo cáo
+    const sent = [];
+    for (const at of [START + 50_000, START + 100_000, START + 150_000]) {
+      sent.push(await (await report(token, { ...para(book), seconds: 50, at })).json());
+    }
+    expect(sent.map((r) => r.gained)).toEqual([1000, 1000, 1000]);
+    expect((await cultivation(token)).tu_vi).toBe(3000);
+  });
+
+  it('khai thời điểm ở tương lai thì chỉ tính tới hiện tại', async () => {
+    const { token, book } = await bookWith([1000]);
+    await report(token, { ...para(book), seconds: 60 });
+    advance(10);
+    const res = await report(token, { ...para(book), seconds: 60, at: now + 3_600_000 });
+    expect((await res.json()).gained).toBe(200);
+  });
+
+  it('khai thời điểm cũ hơn lần báo trước thì không có thời gian để cộng', async () => {
+    const { token, book } = await bookWith([1000]);
+    advance(100);
+    await report(token, { ...para(book), seconds: 60 });
+    const res = await report(token, { ...para(book), seconds: 60, at: START - 1000 });
+    expect((await res.json()).gained).toBe(0);
+  });
+});

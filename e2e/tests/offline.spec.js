@@ -17,7 +17,7 @@ async function uploadAndRead(page, title) {
     name: 'off.epub', mimeType: 'application/epub+zip', buffer: await buildEpubBuffer(title),
   });
   await expect(page.getByText(title).first()).toBeVisible({ timeout: 20_000 });
-  await page.getByText(title).first().click();
+  await page.getByRole('heading', { name: title, level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 20_000 });
 }
 
@@ -37,7 +37,7 @@ test('Offline: mất mạng vẫn mở được thư các và đọc lại chư�
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByText('Sach Offline').first()).toBeVisible({ timeout: 15_000 });
-  await page.getByText('Sach Offline').first().click();
+  await page.getByRole('heading', { name: 'Sach Offline', level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 15_000 });
   await context.setOffline(false);
 });
