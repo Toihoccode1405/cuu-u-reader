@@ -3,7 +3,7 @@ import {
   BookOpen, Search, Plus, Trash2, ArrowLeft, ArrowRight,
   List, Sliders, Maximize, Minimize, X, History,
   PlayCircle, User, LogOut, UploadCloud, Flag, Highlighter, Keyboard, Copy, Download,
-  Edit3, Check, ChevronLeft, ChevronRight, ShieldAlert
+  Edit3, Check, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ShieldAlert
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
@@ -37,6 +37,9 @@ export default function App() {
   const [chapterIndex, setChapterIndex] = useState(1);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [headerVisible, setHeaderVisible] = useState(true);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const upDistRef = useRef(0);
+  const headerQuietUntilRef = useRef(0); // sau khi mở chương, cuộn tự động về vị trí đọc dở không được làm ẩn thanh
 
   // Drawers & Settings
   const [showTOC, setShowTOC] = useState(false);
@@ -1142,6 +1145,8 @@ export default function App() {
       focusParaRef.current = pending.focus;
     }
 
+    headerQuietUntilRef.current = Date.now() + 2500;
+    setHeaderVisible(true);
     const pinnedHere = focusChapterRef.current === chapterIndex && focusParaRef.current >= 0;
     setFocusParaIndex(pinnedHere ? focusParaRef.current : -1);
     paintFocus(pinnedHere ? focusParaRef.current : -1);
@@ -1181,6 +1186,20 @@ export default function App() {
     }
   }, [currentChapter, chapterIndex, view, bookmarks, indexParagraphs, applyBookmarkMarkers, paintFocus]);
 
+  // Menu "⋯" của thanh công cụ: đóng khi bấm ra ngoài, nhấn Esc hoặc khi thanh bị ẩn
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    if (!headerVisible) { setShowMoreMenu(false); return; }
+    const onDown = (e) => { if (!e.target.closest('.tb-more-wrap')) setShowMoreMenu(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setShowMoreMenu(false); };
+    document.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [showMoreMenu, headerVisible]);
+
   // Debounced scroll listener for reading position sync
   useEffect(() => {
     if (view !== 'reader' || !currentBook || !currentChapter) return;
@@ -1192,7 +1211,21 @@ export default function App() {
       setScrollProgress(pct);
 
       // Hide / show header on scroll
-      if (Math.abs(st - lastScrollTopRef.current) > 25) {
+      const delta = st - lastScrollTopRef.current;
+      if (Date.now() < headerQuietUntilRef.current) { lastScrollTopRef.current = st; upDistRef.current = 0; }
+      else if (window.matchMedia('(max-width: 640px)').matches) {
+        // Điện thoại: cuộn xuống thì ẩn; chỉ hiện lại khi cuộn ngược đủ dài (150px) hoặc ở đầu chương,
+        // để một cú vuốt ngược ngắn không làm thanh công cụ che mất chữ
+        if (delta > 8) {
+          upDistRef.current = 0;
+          if (st > 60) setHeaderVisible(false);
+          lastScrollTopRef.current = st;
+        } else if (delta < -8) {
+          upDistRef.current += -delta;
+          lastScrollTopRef.current = st;
+          if (st < 60 || upDistRef.current >= 150) setHeaderVisible(true);
+        }
+      } else if (Math.abs(delta) > 25) {
         setHeaderVisible(st < lastScrollTopRef.current || st < 60);
         lastScrollTopRef.current = st;
       }
@@ -1667,73 +1700,76 @@ export default function App() {
                 <span className="header-chapter-title" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
               </div>
 
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  className="btn btn-icon hide-on-mobile"
-                  disabled={!currentChapter.prev_index}
-                  onClick={() => shortcutsRef.current.prevChapter()}
-                  title="Chương trước (←)"
-                >
-                  <ChevronLeft size={19} />
-                </button>
-                <button
-                  className="btn btn-icon hide-on-mobile"
-                  disabled={!currentChapter.next_index}
-                  onClick={() => shortcutsRef.current.nextChapter()}
-                  title="Chương tiếp theo (→)"
-                >
-                  <ChevronRight size={19} />
-                </button>
-                <button
-                  className={`btn btn-icon ${focusParaIndex >= 0 ? 'flag-on' : ''}`}
-                  onClick={() => toggleFocusLine()}
-                  title="Ghim sáng dòng đang đọc (H)"
-                >
-                  <XhIcon name="moon" />
-                </button>
-                <button
-                  className={`btn btn-icon ${isCurrentParaBookmarked ? 'flag-on' : ''}`}
-                  onClick={toggleBookmark}
-                  title={isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)'}
-                >
-                  <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />
-                </button>
-                <button
-                  className="btn btn-icon"
-                  onClick={() => setShowBookmarks(true)}
-                  title="Danh sách cờ đã cắm (M)"
-                >
-                  <XhIcon name="talisman" />
-                </button>
-                <button className="btn btn-icon" onClick={() => setShowTOC(true)} title="Mục lục chương (C)">
-                  <XhIcon name="scroll" />
-                </button>
-                <button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Cài đặt giao diện (S)">
-                  <XhIcon name="jade" />
-                </button>
-                <button className="btn btn-icon hide-on-mobile" onClick={() => setShowShortcuts(true)} title="Phím tắt (?)">
-                  <Keyboard size={19} />
-                </button>
-                <button
-                  className="btn btn-icon"
-                  onClick={(e) => handleDownloadBook(currentBook, e)}
-                  title="Tải file EPUB về máy"
-                >
-                  <Download size={19} />
-                </button>
-                <button
-                  className="btn btn-icon"
-                  onClick={openChapterEditor}
-                  title="Sửa nội dung chương (E)"
-                >
-                  <Edit3 size={19} />
-                </button>
-                <button className="btn btn-icon hide-on-mobile" onClick={toggleFullscreen} title="Toàn màn hình">
-                  {isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
-                </button>
-              </div>
+              {(() => {
+                // inline: bậc màn hình nhỏ nhất mà nút nằm trên thanh (phone < tablet < desktop)
+                // menu: nút nằm trong menu "⋯" ở những màn hình nào (upto-tablet: điện thoại + máy tính bảng)
+                const actions = [
+                  { key: 'prev', title: 'Chương trước (←)', icon: <ChevronLeft size={19} />, onClick: () => shortcutsRef.current.prevChapter(), inline: 'tablet', disabled: !currentChapter.prev_index },
+                  { key: 'next', title: 'Chương tiếp theo (→)', icon: <ChevronRight size={19} />, onClick: () => shortcutsRef.current.nextChapter(), inline: 'tablet', disabled: !currentChapter.next_index },
+                  { key: 'focus', title: 'Ghim sáng dòng đang đọc (H)', icon: <XhIcon name="moon" />, onClick: () => toggleFocusLine(), inline: 'desktop', menu: 'upto-tablet', on: focusParaIndex >= 0 },
+                  { key: 'flag', title: isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)', icon: <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />, onClick: toggleBookmark, inline: 'phone', on: isCurrentParaBookmarked },
+                  { key: 'bookmarks', title: 'Danh sách cờ đã cắm (M)', icon: <XhIcon name="talisman" />, onClick: () => setShowBookmarks(true), inline: 'desktop', menu: 'upto-tablet' },
+                  { key: 'toc', title: 'Mục lục chương (C)', icon: <XhIcon name="scroll" />, onClick: () => setShowTOC(true), inline: 'phone' },
+                  { key: 'settings', title: 'Cài đặt giao diện (S)', icon: <XhIcon name="jade" />, onClick: () => setShowSettings(true), inline: 'phone' },
+                  { key: 'shortcuts', title: 'Phím tắt (?)', icon: <Keyboard size={19} />, onClick: () => setShowShortcuts(true), inline: 'desktop' },
+                  { key: 'download', title: 'Tải file EPUB về máy', icon: <Download size={19} />, onClick: (e) => handleDownloadBook(currentBook, e), inline: 'desktop', menu: 'upto-tablet' },
+                  { key: 'edit', title: 'Sửa nội dung chương (E)', icon: <Edit3 size={19} />, onClick: openChapterEditor, inline: 'desktop', menu: 'upto-tablet' },
+                  { key: 'fullscreen', title: 'Toàn màn hình', icon: isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />, onClick: toggleFullscreen, inline: 'desktop', menu: 'tablet-only' },
+                ];
+                return (
+                  <div className="tb-actions">
+                    {actions.map((a) => (
+                      <button
+                        key={a.key}
+                        className={`btn btn-icon tb-from-${a.inline} ${a.on ? 'flag-on' : ''}`}
+                        disabled={a.disabled}
+                        onClick={a.onClick}
+                        title={a.title}
+                      >
+                        {a.icon}
+                      </button>
+                    ))}
+                    <div className="tb-more-wrap">
+                      <button
+                        className="btn btn-icon tb-more"
+                        aria-haspopup="menu"
+                        aria-expanded={showMoreMenu}
+                        onClick={() => setShowMoreMenu(v => !v)}
+                        title="Thêm chức năng"
+                      >
+                        <MoreHorizontal size={20} />
+                      </button>
+                      {showMoreMenu && (
+                        <div className="tb-menu" role="menu" aria-label="Thêm chức năng">
+                          {actions.filter((a) => a.menu).map((a) => (
+                            <button
+                              key={a.key}
+                              role="menuitem"
+                              className={`tb-menu-item tbm-${a.menu} ${a.on ? 'flag-on' : ''}`}
+                              onClick={(e) => { setShowMoreMenu(false); a.onClick(e); }}
+                            >
+                              {a.icon}
+                              <span>{a.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </header>
+          {!headerVisible && (
+            <button
+              type="button"
+              className="header-reveal-tab"
+              aria-label="Hiện thanh công cụ"
+              onClick={() => { upDistRef.current = 0; setHeaderVisible(true); }}
+            >
+              <ChevronDown size={16} />
+            </button>
+          )}
 
           <main className="reader-content-box">
             <div className="xh-title-row" aria-hidden="true">
