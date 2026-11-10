@@ -49,6 +49,16 @@ export default function App() {
   const [chapterIndex, setChapterIndex] = useState(1);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false); // điện thoại: ô tìm kiếm mở rộng khi bấm kính lúp
+  const [showAccountMenu, setShowAccountMenu] = useState(false); // điện thoại: menu tài khoản gộp
+  useEffect(() => {
+    if (!showAccountMenu) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setShowAccountMenu(false); };
+    const onDown = (e) => { if (!e.target.closest?.('.account-wrap')) setShowAccountMenu(false); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onDown); };
+  }, [showAccountMenu]);
   const upDistRef = useRef(0);
   const [nearEnd, setNearEnd] = useState(false); // gần cuối chương: điện thoại phải thấy nút Chương sau
   const nearEndRef = useRef(false);
@@ -1514,13 +1524,22 @@ export default function App() {
       {view === 'library' && (
         <>
           <header className="header">
-            <div className="header-inner">
+            <div className={`header-inner ${searchOpen ? 'search-open' : ''}`}>
               <div className="brand" onClick={() => loadUserData()}>
                 <span className="brand-seal">
                   <XhIcon name="seal" />
                 </span>
-                <span>Cửu U Thư Các</span>
+                <span className="brand-text">Cửu U Thư Các</span>
               </div>
+
+              <button
+                type="button"
+                className="search-toggle"
+                aria-label="Tìm kiếm"
+                onClick={() => setSearchOpen(true)}
+              >
+                <Search size={20} />
+              </button>
 
               <div className="search-container">
                 <Search size={18} className="search-icon" />
@@ -1529,11 +1548,22 @@ export default function App() {
                   className="search-input"
                   placeholder="Tìm kiếm sách, tác giả..."
                   value={searchQuery}
+                  autoFocus={searchOpen}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {searchOpen && (
+                  <button
+                    type="button"
+                    className="search-close"
+                    aria-label="Đóng tìm kiếm"
+                    onClick={() => setSearchOpen(false)}
+                  >
+                    <X size={20} />
+                  </button>
+                )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="header-actions">
                 {cultivation && cultivation.enabled && (
                   <button
                     type="button"
@@ -1544,12 +1574,37 @@ export default function App() {
                   >
                     <span className="cultivation-realm">
                       <RealmIcon name={cultivation.realm.name} size={16} />
-                      {cultivation.realm.name} · tầng {cultivation.realm.tang}
+                      <span className="realm-name">{cultivation.realm.name} · </span>tầng {cultivation.realm.tang}
                     </span>
                     <span className="cultivation-bar"><span style={{ width: `${Math.round(cultivation.realm.progress * 100)}%` }} /></span>
                   </button>
                 )}
                 {/* User Profile Badge */}
+                {cloudUser && (
+                  <div className="account-wrap">
+                    <button
+                      type="button"
+                      className="account-btn"
+                      aria-label="Tài khoản"
+                      aria-haspopup="menu"
+                      aria-expanded={showAccountMenu}
+                      onClick={() => setShowAccountMenu(v => !v)}
+                    >
+                      <User size={18} />
+                    </button>
+                    {showAccountMenu && (
+                      <div className="account-menu" role="menu" aria-label="Tài khoản">
+                        <div className="account-menu-name">{cloudUser.username}</div>
+                        <button type="button" role="menuitem" className="account-menu-item" onClick={() => { setShowAccountMenu(false); handleLogout(); }}>
+                          <LogOut size={16} /> Đăng xuất
+                        </button>
+                        <button type="button" role="menuitem" className="account-menu-item" onClick={() => { setShowAccountMenu(false); handleLogoutAll(); }}>
+                          <ShieldAlert size={16} /> Đăng xuất mọi thiết bị
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {cloudUser && (
                   <div className="user-badge" title="Tài khoản đang đăng nhập">
                     <User size={14} style={{ color: 'var(--accent-color)' }} />

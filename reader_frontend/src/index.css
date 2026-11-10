@@ -1643,7 +1643,7 @@ input[type="range"] {
 }
 .history-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 1.25rem;
 }
 .history-card {
@@ -2777,5 +2777,99 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
 .reader-card { --page-pad: 1.25rem; }
 @media (max-width: 640px) {
   .reader-card { --page-pad: 1rem; }
+}
+
+/* =============================================================================
+   THƯ VIỆN: HEADER GỌN + THẺ SÁCH KHÔNG BẺ DÒNG
+   ============================================================================= */
+.brand { white-space: nowrap; flex-shrink: 0; }
+.brand-text { white-space: nowrap; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.search-container { min-width: 0; }
+.search-toggle, .search-close, .account-wrap { display: none; }
+.realm-name { white-space: nowrap; }
+
+/* Thẻ lịch sử: "Đọc tiếp" luôn một dòng, dòng tác giả cắt bằng dấu … */
+.history-resume-btn { white-space: nowrap; flex-shrink: 0; }
+.history-meta-text {
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Máy tính bảng: giữ bố cục, chỉ bảo đảm không tràn ngang */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .header-inner { gap: 0.75rem; padding: 0 1rem; }
+  .brand { font-size: 1.1rem; }
+  .user-badge { padding: 5px 8px; gap: 6px; }
+}
+
+/* Điện thoại: một hàng gọn; logo chỉ còn con dấu, tìm kiếm là kính lúp, tài khoản gộp một nút */
+@media (max-width: 640px) {
+  .header-inner { gap: 6px; padding: 0 0.75rem; justify-content: flex-start; }
+  .brand-text { display: none; }
+  .brand { gap: 0; }
+  .search-toggle, .account-wrap { display: flex; }
+  .search-toggle, .account-btn, .search-close {
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .search-toggle { margin-left: auto; }
+  .search-container { display: none; }
+  .header-actions { gap: 4px; }
+  .user-badge { display: none; }
+  .header-actions .btn-primary { width: 40px; height: 40px; padding: 0; justify-content: center; border-radius: 10px; }
+
+  /* Chip tu vi gọn: biểu tượng + "tầng N"; tên cảnh giới xem ở tooltip / bảng cảnh giới */
+  .cultivation-chip { min-width: 0; padding: 3px 8px; gap: 2px; }
+  .cultivation-chip .realm-name { display: none; }
+
+  /* Ô tìm kiếm mở rộng chiếm cả hàng */
+  .header-inner.search-open > :not(.search-container) { display: none; }
+  .header-inner.search-open .search-container { display: flex; align-items: center; gap: 6px; flex: 1; max-width: none; }
+  .header-inner.search-open .search-input { flex: 1; min-width: 0; width: auto; }
+  .header-inner.search-open .search-close { display: flex; flex-shrink: 0; }
+
+  .account-wrap { position: relative; }
+  .account-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 230px;
+    padding: 6px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.25));
+    z-index: 60;
+  }
+  .account-menu-name { padding: 8px 10px; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid var(--border-color); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    text-align: left;
+    cursor: pointer;
+  }
+  .account-menu-item:hover { background: var(--accent-light); }
 }
 
