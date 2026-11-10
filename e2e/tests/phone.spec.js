@@ -90,3 +90,29 @@ test('Điện thoại: menu ⋯ gọn, không có Phím tắt, mỗi mục một
   expect(mb.x).toBeGreaterThanOrEqual(0);
   expect(mb.x + mb.width).toBeLessThanOrEqual(PHONE.width);
 });
+
+test('Đoạn được bôi sáng/ghim: vạch màu nằm trong lề, không dính vào chữ (điện thoại và máy lớn)', async ({ page, baseURL }) => {
+  await open(page, baseURL, 'Sach Vach Mau', PHONE);
+  const measure = () => page.evaluate(() => {
+    const p = document.querySelector('.reader-body [data-p="2"]');
+    const before = p.getBoundingClientRect().left;
+    p.classList.add('focused-line');
+    const c = getComputedStyle(p);
+    const r = p.getBoundingClientRect();
+    // chữ bắt đầu cách mép dải sáng bao nhiêu px
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const textLeft = range.getBoundingClientRect().left;
+    return { padL: parseFloat(c.paddingLeft), gap: textLeft - r.left, left: r.left, cardLeft: document.querySelector('.reader-card').getBoundingClientRect().left, before };
+  });
+  let m = await measure();
+  expect(m.padL).toBeGreaterThanOrEqual(12); // chữ cách vạch/mép dải sáng ít nhất 12px
+  expect(m.gap).toBeGreaterThanOrEqual(12);
+  expect(m.left).toBeGreaterThanOrEqual(m.cardLeft - 1); // dải sáng không tràn ra ngoài thẻ
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(400);
+  m = await measure();
+  expect(m.gap).toBeGreaterThanOrEqual(12);
+  expect(m.left).toBeGreaterThanOrEqual(m.cardLeft - 1);
+});

@@ -2772,3 +2772,10 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
   .tb-menu-item.tb-hide-phone { display: none; }
 }
 
+/* Dải sáng/vạch màu của đoạn được ghim hay đánh dấu dùng --page-pad để nới ra phần lề rồi bù bằng đệm;
+   biến này phải là lề thật của thẻ đọc, nếu không (0) chữ sẽ dính sát vạch màu */
+.reader-card { --page-pad: 1.25rem; }
+@media (max-width: 640px) {
+  .reader-card { --page-pad: 1rem; }
+}
+
