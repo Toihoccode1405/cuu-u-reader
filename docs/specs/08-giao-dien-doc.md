@@ -18,3 +18,4 @@ Tham khảo bố cục của một trang đọc truyện khác (chỉ lấy các
 ## Cập nhật (giãn dòng và tiến độ)
 - Thanh "Giãn dòng" chỉnh **khoảng cách giữa các đoạn** (gap = giá trị - 1,05 em; mặc định 1,8 cho 0,75em như cũ). Dòng trong một đoạn cố định 1,8 và không đổi theo thanh trượt.
 - Thanh tiến độ ở đáy header cập nhật trực tiếp vào DOM khi cuộn, đổi kích thước trang (phông/hình tải xong) và sang chương, nên không đứng yên ở giá trị cũ. Ẩn cùng header. Test: giãn dòng, tiến độ chạy theo cuộn và theo đổi chiều cao trang.
+- Nguyên nhân thanh tiến độ "treo" trên truyện nghìn chương: mỗi lần cuộn đều cập nhật state làm dựng lại cả App, kể cả danh sách mục lục hàng nghìn chương luôn được dựng sẵn. Đã bỏ state theo cuộn và chỉ dựng mục lục khi mở. Test: mục lục không có phần tử khi đóng.

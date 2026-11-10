@@ -47,7 +47,6 @@ export default function App() {
   const [currentBook, setCurrentBook] = useState(null);
   const [currentChapter, setCurrentChapter] = useState(null);
   const [chapterIndex, setChapterIndex] = useState(1);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const upDistRef = useRef(0);
@@ -1270,7 +1269,6 @@ export default function App() {
       const st = window.scrollY || document.documentElement.scrollTop;
       const sh = document.documentElement.scrollHeight - window.innerHeight;
       const pct = sh > 0 ? Math.min(100, Math.max(0, (st / sh) * 100)) : 0;
-      setScrollProgress(pct);
 
       // Hide / show header on scroll
       const delta = st - lastScrollTopRef.current;
@@ -1901,7 +1899,8 @@ export default function App() {
                 />
               </div>
               <div className="toc-list">
-                {(currentBook.chapters || [])
+                {/* Chỉ dựng danh sách khi mở: truyện nghìn chương mà dựng sẵn thì mỗi lần cập nhật giao diện đều nặng */}
+                {showTOC && (currentBook.chapters || [])
                   .filter(c => c.title.toLowerCase().includes(tocSearch.toLowerCase()))
                   .map((ch) => (
                     <div

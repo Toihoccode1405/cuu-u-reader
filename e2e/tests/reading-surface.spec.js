@@ -206,3 +206,14 @@ test('Thanh tiến độ chạy theo cuộn và tự cập nhật khi chiều ca
   });
   await expect.poll(scale).toBeLessThan(s2 - 0.1);
 });
+
+test('Mục lục chỉ được dựng khi mở (truyện nghìn chương không bị nặng mỗi lần cuộn)', async ({ page, baseURL }) => {
+  await page.setViewportSize(VIEWPORTS.desktop);
+  await openBook(page, baseURL, 'Sach Muc Luc Nhe');
+  await expect(page.locator('.toc-item')).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: /^1 \/ 2$/ }).click();
+  await expect(page.locator('.toc-item')).toHaveCount(2);
+  await expect(page.locator('.toc-item.active')).toContainText('Tiệm Nhỏ');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.toc-item')).toHaveCount(0);
+});
