@@ -2397,8 +2397,8 @@ input[type="range"] {
   overflow-y: auto;
   border-radius: 14px;
   padding: 18px 18px 14px;
-  background: var(--bg-color, #fbf4e4);
-  color: var(--text-color, #2b2418);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
 }
 .realm-path-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -2416,10 +2416,10 @@ input[type="range"] {
   opacity: 0.55;
 }
 .realm-row.done { opacity: 0.85; }
-.realm-row.current { opacity: 1; background: rgba(0, 0, 0, 0.07); outline: 1.5px solid var(--buoc-color); }
-.realm-row-name { flex: 1; color: var(--text-color, #2b2418); font-size: 14px; }
+.realm-row.current { opacity: 1; background: var(--bg-secondary); outline: 1.5px solid var(--buoc-color); }
+.realm-row-name { flex: 1; color: var(--text-primary); font-size: 14px; }
 .realm-row-name small { display: block; font-size: 11px; opacity: 0.7; }
-.realm-row-at { font-size: 11px; color: var(--text-color, #2b2418); opacity: 0.6; white-space: nowrap; }
+.realm-row-at { font-size: 11px; color: var(--text-primary); opacity: 0.6; white-space: nowrap; }
 
 
 /* ---- Thanh công cụ khi đọc: gọn theo cỡ màn hình ---- */

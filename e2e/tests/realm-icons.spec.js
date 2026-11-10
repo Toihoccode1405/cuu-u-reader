@@ -58,3 +58,34 @@ test('Icon cảnh giới: tắt hoạt ảnh khi người dùng chọn giảm ch
   expect(await anim(icon)).toBe('none');
   expect(await anim(icon.locator('.realm-spin'))).toBe('none');
 });
+
+const lum = ([r, g, b]) => {
+  const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+};
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number);
+
+for (const theme of ['white', 'sepia', 'slate']) {
+  test(`Bảng cảnh giới đọc rõ ở theme ${theme}: chữ tên, "từ N" và dòng tổng tương phản đủ`, async ({ page, baseURL }) => {
+    await openLibrary(page, baseURL);
+    await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+    await page.getByTestId('cultivation-chip').click();
+    const dialog = page.getByRole('dialog', { name: 'Con đường tu luyện' });
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(400);
+    const m = await dialog.evaluate((d) => {
+      const cs = (el) => getComputedStyle(el);
+      const row = d.querySelector('.realm-row.current');
+      return {
+        bg: cs(d).backgroundColor,
+        title: cs(d.querySelector('h3')).color,
+        name: cs(row.querySelector('.realm-row-name')).color,
+        at: cs(row.querySelector('.realm-row-at')).color,
+        total: cs(d.querySelector('.realm-path-total')).color,
+      };
+    });
+    const bg = rgb(m.bg);
+    for (const k of ['title', 'name', 'at', 'total']) expect(contrast(rgb(m[k]), bg), `${theme} ${k}`).toBeGreaterThanOrEqual(4.5);
+  });
+}
