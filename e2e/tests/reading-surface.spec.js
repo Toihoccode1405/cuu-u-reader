@@ -156,19 +156,20 @@ test('Giãn dòng: chỉnh khoảng cách giữa các đoạn, dòng trong một
   });
   const before = await measure();
   expect(before.lh).toBe(36);
+  expect(before.gap).toBeCloseTo(36, 0); // giống trang mẫu: khoảng cách giữa các đoạn = một dòng trống (1,8 x 20px)
 
   await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: 'Cài đặt đọc', exact: true }).click();
-  const range = page.locator('.drawer-overlay.open input[type="range"][min="1.2"]');
+  const range = page.locator('.drawer-overlay.open input[type="range"][min="1.5"]');
   await range.evaluate((el) => {
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    set.call(el, '2.4');
+    set.call(el, '2.2');
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.waitForTimeout(400);
   const after = await measure();
   expect(after.lh).toBe(36); // dòng trong đoạn không đổi
-  expect(after.gap).toBeGreaterThan(before.gap + 10); // khoảng cách giữa các đoạn rộng ra
+  expect(after.gap).toBeCloseTo(44, 0); // khoảng cách giữa các đoạn rộng ra
 });
 
 test('Thanh tiến độ không để lại vệt ở mép trên khi thanh đầu đã ẩn', async ({ page, baseURL }) => {

@@ -200,9 +200,9 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', resolveTheme(settings.theme));
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
-    // Dòng trong một đoạn giữ nguyên 1,8; thanh "Giãn dòng" chỉnh khoảng cách giữa các đoạn
+    // Dòng trong một đoạn giữ nguyên 1,8; thanh "Giãn dòng" (1,5-2,2) chỉnh khoảng cách giữa các đoạn, giống trang mẫu: một dòng trống cao bằng giá trị này
     document.documentElement.style.setProperty('--reader-line-height', 1.8);
-    document.documentElement.style.setProperty('--reader-para-gap', `${Math.max(0, settings.lineHeight - 1.05).toFixed(2)}em`);
+    document.documentElement.style.setProperty('--reader-para-gap', `${Math.min(2.2, Math.max(1.5, settings.lineHeight)).toFixed(1)}em`);
     document.documentElement.style.setProperty('--reader-letter-spacing', `${settings.letterSpacing}px`);
     document.documentElement.style.setProperty('--reader-max-width', `${settings.maxWidth}px`);
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
@@ -2030,25 +2030,25 @@ export default function App() {
                   </button>
                 </div>
 
-                <label className="settings-label">Giãn Dòng (giữa các đoạn): {settings.lineHeight.toFixed(2)}</label>
+                <label className="settings-label">Giãn Dòng (giữa các đoạn): {Math.min(2.2, Math.max(1.5, settings.lineHeight)).toFixed(1)}</label>
                 <div className="setting-range-row">
                   <button
                     className="size-btn"
-                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.max(1.2, +(s.lineHeight - 0.05).toFixed(2)) }))}
+                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.max(1.5, +(Math.min(2.2, s.lineHeight) - 0.1).toFixed(1)) }))}
                   >
                     −
                   </button>
                   <input
                     type="range"
-                    min="1.2"
-                    max="2.6"
-                    step="0.05"
-                    value={settings.lineHeight}
+                    min="1.5"
+                    max="2.2"
+                    step="0.1"
+                    value={Math.min(2.2, Math.max(1.5, settings.lineHeight))}
                     onChange={(e) => setSettings(s => ({ ...s, lineHeight: parseFloat(e.target.value) }))}
                   />
                   <button
                     className="size-btn"
-                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.min(2.6, +(s.lineHeight + 0.05).toFixed(2)) }))}
+                    onClick={() => setSettings(s => ({ ...s, lineHeight: Math.min(2.2, +(Math.max(1.5, s.lineHeight) + 0.1).toFixed(1)) }))}
                   >
                     +
                   </button>
