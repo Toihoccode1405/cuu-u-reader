@@ -47,7 +47,12 @@ export default function RealmPath({ cultivation, onClose }) {
                 {r.name}
                 {r.alias && <small>({r.alias})</small>}
                 {r.quaDo && !r.alias && <small>Quá độ</small>}
-                {r.titles && <small>{r.titles.join(' · ')}</small>}
+                {r.titles && r.titles.map((t) => <small key={t.name}>{t.name}: {t.cond}</small>)}
+                {i === currentIndex && (cultivation.realm.stage || cultivation.realm.note) && (
+                  <small className="realm-row-stage">
+                    {[cultivation.realm.stage, cultivation.realm.note].filter(Boolean).join(' · ')}
+                  </small>
+                )}
               </span>
               <span className="realm-row-at">từ {fmt(r.from)}</span>
             </div>

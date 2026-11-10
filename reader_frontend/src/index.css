@@ -2892,3 +2892,13 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
   .realm-svg, .realm-svg .realm-spin { animation: none; }
 }
 
+/* =============================================================================
+   CẤP BẬC TRONG CẢNH GIỚI: tên cấp có thể dài ("Thập Tức Khô Thần Kiếp"), chip cắt bằng dấu … thay vì làm tràn header
+   ============================================================================= */
+.cultivation-chip { max-width: 220px; }
+.realm-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.realm-row-name small.realm-row-stage { opacity: 0.95; color: var(--buoc-color); font-weight: 600; }
+@media (max-width: 640px) {
+  .cultivation-chip { max-width: 138px; }
+}
+

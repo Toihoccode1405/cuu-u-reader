@@ -32,14 +32,14 @@ const report = (token, body) => api('/api/reading/report', { method: 'POST', tok
 const cultivation = async (token) => (await api('/api/cultivation', { token })).json();
 
 describe('S6 - Tu vi: trạng thái ban đầu', () => {
-  it('người đọc mới ở Ngưng Khí tầng 1 của Bước thứ nhất với 0 tu vi, hệ thống đang bật', async () => {
+  it('người đọc mới ở Ngưng Khí Tầng 1 của Bước thứ nhất với 0 tu vi, hệ thống đang bật', async () => {
     const { token } = await registerUser();
     const res = await api('/api/cultivation', { token });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       tu_vi: 0,
       enabled: true,
-      realm: { name: 'Ngưng Khí', tang: 1, buoc: 1 },
+      realm: { name: 'Ngưng Khí', tang: 1, buoc: 1, stage: 'Tầng 1' },
     });
   });
 });
@@ -122,22 +122,22 @@ describe('S6 - Cảnh giới và đột phá', () => {
     return last;
   }
 
-  it('còn thiếu 1000 từ tới Trúc Cơ thì vẫn ở Ngưng Khí tầng 9, đủ mốc thì đột phá sang Trúc Cơ tầng 1', async () => {
+  it('còn thiếu 1000 từ tới Trúc Cơ thì vẫn ở Ngưng Khí Tầng 15, đủ mốc thì đột phá sang Trúc Cơ Sơ Kỳ', async () => {
     const { token, book } = await bookWith(Array(32).fill(1000));
     const before = await readOneParagraphTimes(token, book.id, 29); // 29.000 từ (mốc Trúc Cơ là 30.000)
-    expect(before).toMatchObject({ tu_vi: 29000, realm: { name: 'Ngưng Khí', tang: 9 } });
+    expect(before).toMatchObject({ tu_vi: 29000, realm: { name: 'Ngưng Khí', tang: 15, stage: 'Tầng 15' } });
 
     const res = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 29, to_para: 29, seconds: 60 })).json();
-    expect(res).toMatchObject({ tu_vi: 30000, breakthrough: true, realm: { name: 'Trúc Cơ', tang: 1, buoc: 1 } });
+    expect(res).toMatchObject({ tu_vi: 30000, breakthrough: true, realm: { name: 'Trúc Cơ', tang: 1, buoc: 1, stage: 'Sơ Kỳ' } });
   });
 
   it('lên tầng trong cùng cảnh giới cũng là đột phá', async () => {
     const { token, book } = await bookWith(Array(5).fill(1000));
-    // Ngưng Khí 0..30000 chia 9 tầng, mỗi tầng ~3333,3 từ: 3000 từ vẫn tầng 1, 4000 từ lên tầng 2
-    const first = await readOneParagraphTimes(token, book.id, 3);
-    expect(first).toMatchObject({ tu_vi: 3000, breakthrough: false, realm: { name: 'Ngưng Khí', tang: 1 } });
-    const second = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 3, to_para: 3, seconds: 60 })).json();
-    expect(second).toMatchObject({ tu_vi: 4000, breakthrough: true, realm: { name: 'Ngưng Khí', tang: 2 } });
+    // Ngưng Khí 0..30000 chia 15 tầng, mỗi tầng 2000 từ: 1000 từ vẫn Tầng 1, 2000 từ lên Tầng 2
+    const first = await readOneParagraphTimes(token, book.id, 1);
+    expect(first).toMatchObject({ tu_vi: 1000, breakthrough: false, realm: { name: 'Ngưng Khí', tang: 1, stage: 'Tầng 1' } });
+    const second = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 1, to_para: 1, seconds: 60 })).json();
+    expect(second).toMatchObject({ tu_vi: 2000, breakthrough: true, realm: { name: 'Ngưng Khí', tang: 2, stage: 'Tầng 2' } });
   });
 });
 
@@ -219,7 +219,7 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     expect(await (await backfill(token)).json()).toMatchObject({ gained: 0, tu_vi: 0 });
   });
 
-  it('tính đúng cảnh giới, tầng và Bước ở mốc xa (6,5 triệu từ là Thiên Nhân Suy Kiếp tầng 3 của Bước thứ hai)', async () => {
+  it('tính đúng cảnh giới, tầng và Bước ở mốc xa (6,5 triệu từ là Thiên Nhân Suy Kiếp Đệ Tam Suy của Bước thứ hai)', async () => {
     const big = Array(250_000).fill('a').join(' ');
     const user = await registerUser();
     const chapters = Array.from({ length: 27 }, () => big);
@@ -228,11 +228,11 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     const res = await (await backfill(user.token)).json();
     expect(res).toMatchObject({
       tu_vi: 6_500_000,
-      realm: { name: 'Thiên Nhân Suy Kiếp', tang: 3, tangs: 5, buoc: 2 },
+      realm: { name: 'Thiên Nhân Suy Kiếp', tang: 3, tangs: 5, buoc: 2, stage: 'Đệ Tam Suy' },
     });
   }, 60_000);
 
-  it('tu vi tối đa là 14.890.000: đọc vượt cũng dừng ở Đạp Thiên Cảnh tầng 9 của Bước thứ tư', async () => {
+  it('tu vi tối đa là 14.890.000: đọc vượt cũng dừng ở đỉnh Đạp Thiên Cảnh của Bước thứ tư', async () => {
     const big = Array(1_000_000).fill('a').join(' ');
     const user = await registerUser();
     const chapters = [...Array.from({ length: 15 }, () => big), 'a'];
@@ -241,7 +241,7 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     const res = await (await backfill(user.token)).json();
     expect(res).toMatchObject({
       tu_vi: 14_890_000,
-      realm: { name: 'Đạp Thiên Cảnh', tang: 9, tangs: 9, buoc: 4, max: true },
+      realm: { name: 'Đạp Thiên Cảnh', tang: 1, tangs: 1, buoc: 4, stage: null, max: true },
     });
   }, 180_000);
 

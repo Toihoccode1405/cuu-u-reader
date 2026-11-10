@@ -63,7 +63,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     }
 
     await expect(page.getByTestId('cultivation-chip')).toBeVisible();
-    await expect(page.getByTestId('cultivation-chip')).toContainText('tầng 1');
+    await expect(page.getByTestId('cultivation-chip')).toContainText('Tầng 1');
     await expect(page.locator('label[title="Thêm sách EPUB"]')).toBeVisible();
 
     if (phone) {

@@ -1571,11 +1571,15 @@ export default function App() {
                     className={`cultivation-chip buoc-${cultivation.realm.buoc}`}
                     data-testid="cultivation-chip"
                     onClick={() => setShowRealmPath(true)}
-                    title={`${cultivation.realm.buoc_name}${cultivation.realm.alias ? ` · ${cultivation.realm.alias}` : ''} · ${cultivation.tu_vi.toLocaleString('vi-VN')} tu vi`}
+                    title={`${cultivation.realm.name}${cultivation.realm.stage ? ` · ${cultivation.realm.stage}` : ''} · ${cultivation.realm.buoc_name}${cultivation.realm.alias ? ` · ${cultivation.realm.alias}` : ''} · ${cultivation.tu_vi.toLocaleString('vi-VN')} tu vi`}
                   >
                     <span className="cultivation-realm">
                       <RealmIcon name={cultivation.realm.name} size={16} />
-                      <span className="realm-name">{cultivation.realm.name} · </span>tầng {cultivation.realm.tang}
+                      <span className="realm-label">
+                        {cultivation.realm.stage
+                          ? <><span className="realm-name">{cultivation.realm.name} · </span>{cultivation.realm.stage}</>
+                          : cultivation.realm.name}
+                      </span>
                     </span>
                     <span className="cultivation-bar"><span style={{ width: `${Math.round(cultivation.realm.progress * 100)}%` }} /></span>
                   </button>
@@ -2448,7 +2452,7 @@ export default function App() {
       {breakthrough && (
         <div className={`breakthrough-banner buoc-${breakthrough.buoc}`} role="status" aria-live="polite">
           <RealmIcon name={breakthrough.name} size={26} />
-          <span><strong>Đột phá!</strong> {breakthrough.name} · tầng {breakthrough.tang}</span>
+          <span><strong>Đột phá!</strong> {breakthrough.stage ? `${breakthrough.name} · ${breakthrough.stage}` : breakthrough.name}</span>
         </div>
       )}
 
