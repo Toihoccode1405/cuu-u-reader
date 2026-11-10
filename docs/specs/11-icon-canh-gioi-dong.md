@@ -3,9 +3,10 @@
 ## Nguồn và ánh xạ
 Bộ 17 icon trong `docs/brand/realms_full.html` (do người dùng thiết kế) thay bộ game-icons cũ. `reader_frontend/scripts/gen-realm-icons.mjs` đọc file đó và sinh `src/realmIconData.js` (khung 100x100, màu ánh sáng riêng).
 
-18 bậc của ứng dụng dùng 16 icon đầu (Đạp Thiên Cảnh, id 17, chưa có trong hệ tu vi nên chưa dùng). Hai nhóm dùng chung một hình trong file nguồn được tách bằng biến thể nhỏ để mỗi bậc một hình riêng (test cũ yêu cầu 18 hình khác nhau):
+20 bậc của ứng dụng dùng 17 icon (từ 2026-11-10 có Đạp Thiên Cảnh, id 17). Các nhóm dùng chung một hình trong file nguồn được tách bằng biến thể nhỏ để mỗi bậc một hình riêng (test cũ yêu cầu 18 hình khác nhau):
 - Âm Hư: nửa lam sáng, nửa đỏ mờ. Dương Thực: ngược lại.
 - Huyền Kiếp: hình của Không Huyền thêm một vòng nét đứt xoay.
+- Bán Bộ Đạp Thiên: hình Đạp Thiên Cảnh, lõi trắng sáng thành chấm mờ (chưa đạp lên hẳn).
 
 ## Hoạt ảnh (giữ nguyên như file nguồn)
 - `realm-breathe` 3,5s: phóng 1→1,06 và quầng sáng `drop-shadow(currentColor)` đổi cường độ.

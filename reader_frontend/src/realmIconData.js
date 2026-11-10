@@ -90,5 +90,15 @@ export default {
     "source": "Không Kiếp (Đại Thiên Tôn)",
     "color": "#fbbf24",
     "body": "<circle cx=\"50\" cy=\"50\" r=\"44\" fill=\"#331402\" stroke=\"#f59e0b\" stroke-width=\"3.5\"/><polygon points=\"50,20 56,36 74,36 60,46 66,64 50,54 34,64 40,46 26,36 44,36\" fill=\"#fbbf24\" stroke=\"#d97706\" stroke-width=\"1.5\"/><circle cx=\"50\" cy=\"50\" r=\"7\" fill=\"#ffffff\" filter=\"drop-shadow(0 0 8px #fbbf24)\"/>"
+  },
+  "Bán Bộ Đạp Thiên": {
+    "source": "Đạp Thiên Cảnh",
+    "color": "#fef08a",
+    "body": "<circle cx=\"50\" cy=\"50\" r=\"44\" fill=\"#171202\" stroke=\"#fef08a\" stroke-width=\"4\"/><path d=\"M18 78 Q50 16 82 78\" fill=\"none\" stroke=\"#fef08a\" stroke-width=\"4\" stroke-linecap=\"round\"/><path d=\"M26 70 Q50 26 74 70\" fill=\"none\" stroke=\"#fde047\" stroke-width=\"3\" stroke-linecap=\"round\"/><path d=\"M34 62 Q50 36 66 62\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"50\" cy=\"24\" r=\"5\" fill=\"#fef08a\" opacity=\"0.5\"/>"
+  },
+  "Đạp Thiên Cảnh": {
+    "source": "Đạp Thiên Cảnh",
+    "color": "#fef08a",
+    "body": "<circle cx=\"50\" cy=\"50\" r=\"44\" fill=\"#171202\" stroke=\"#fef08a\" stroke-width=\"4\"/><path d=\"M18 78 Q50 16 82 78\" fill=\"none\" stroke=\"#fef08a\" stroke-width=\"4\" stroke-linecap=\"round\"/><path d=\"M26 70 Q50 26 74 70\" fill=\"none\" stroke=\"#fde047\" stroke-width=\"3\" stroke-linecap=\"round\"/><path d=\"M34 62 Q50 36 66 62\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"50\" cy=\"24\" r=\"8\" fill=\"#ffffff\" filter=\"drop-shadow(0 0 12px #fef08a)\"/>"
   }
 };

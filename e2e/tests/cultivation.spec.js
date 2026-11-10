@@ -127,7 +127,7 @@ test('Tu vi: đọc khi mất mạng được gom lại và gửi bù khi có m�
   void bookId;
 });
 
-test('Icon cảnh giới: chip có icon đúng bậc, bấm chip mở bảng đủ 18 bậc và đánh dấu bậc hiện tại', async ({ page }) => {
+test('Icon cảnh giới: chip có icon đúng bậc, bấm chip mở bảng đủ 20 bậc và đánh dấu bậc hiện tại', async ({ page }) => {
   const problems = collectProblems(page);
   await registerViaUi(page);
   const chip = page.getByTestId('cultivation-chip');
@@ -137,14 +137,14 @@ test('Icon cảnh giới: chip có icon đúng bậc, bấm chip mở bảng đ�
   const dialog = page.getByRole('dialog', { name: 'Con đường tu luyện' });
   await expect(dialog).toBeVisible();
   const rows = dialog.getByTestId('realm-row');
-  await expect(rows).toHaveCount(18);
+  await expect(rows).toHaveCount(20);
 
   // Mỗi bậc một icon riêng
   const icons = await rows.locator('svg').evaluateAll((els) => els.map((e) => e.getAttribute('data-icon')));
-  expect(new Set(icons).size).toBe(18);
+  expect(new Set(icons).size).toBe(20);
   // ...và hình vẽ thật sự khác nhau, không bậc nào rơi về icon dự phòng
   const drawings = await rows.locator('svg').evaluateAll((els) => els.map((e) => e.innerHTML));
-  expect(new Set(drawings).size).toBe(18);
+  expect(new Set(drawings).size).toBe(20);
   await expect(dialog.locator('svg[data-fallback]')).toHaveCount(0);
 
   // Chỉ bậc hiện tại được đánh dấu

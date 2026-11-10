@@ -2369,6 +2369,7 @@ input[type="range"] {
 .buoc-1 { --buoc-color: #2f9e8f; }
 .buoc-2 { --buoc-color: #b8860b; }
 .buoc-3 { --buoc-color: #8a55c9; }
+.buoc-4 { --buoc-color: #b3263e; }
 .cultivation-chip {
   border: 0;
   cursor: pointer;

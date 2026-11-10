@@ -232,6 +232,19 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     });
   }, 60_000);
 
+  it('tu vi tối đa là 14.890.000: đọc vượt cũng dừng ở Đạp Thiên Cảnh tầng 9 của Bước thứ tư', async () => {
+    const big = Array(1_000_000).fill('a').join(' ');
+    const user = await registerUser();
+    const chapters = [...Array.from({ length: 15 }, () => big), 'a'];
+    const { book } = await uploadBook(user.token, await buildEpub({ chapters }));
+    await setProgress(user.token, book.id, 16); // 15 chương trước đó x 1.000.000 từ = 15 triệu, vượt trần
+    const res = await (await backfill(user.token)).json();
+    expect(res).toMatchObject({
+      tu_vi: 14_890_000,
+      realm: { name: 'Đạp Thiên Cảnh', tang: 9, tangs: 9, buoc: 4, max: true },
+    });
+  }, 180_000);
+
   it('sách rất dài chưa tách chương vẫn cộng hồi tố nhanh (ước lượng phần chưa tách theo trung bình), không treo máy chủ', async () => {
     const chapter = Array(6000).fill('tu').join(' ');
     const user = await registerUser();

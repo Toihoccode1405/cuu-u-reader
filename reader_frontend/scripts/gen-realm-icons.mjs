@@ -19,6 +19,7 @@ const MAP = {
   'Ngưng Khí': 1, 'Trúc Cơ': 2, 'Kết Đan': 3, 'Nguyên Anh': 4, 'Hóa Thần': 5, 'Anh Biến': 6, 'Vấn Đỉnh': 7,
   'Âm Hư': 8, 'Dương Thực': 8, 'Khuy Niết': 9, 'Tịnh Niết': 10, 'Toái Niết': 11, 'Thiên Nhân Suy Kiếp': 12,
   'Không Niết': 13, 'Không Linh': 14, 'Không Huyền': 15, 'Huyền Kiếp': 15, 'Không Kiếp': 16,
+  'Bán Bộ Đạp Thiên': 17, 'Đạp Thiên Cảnh': 17,
 };
 
 const html = readFileSync(SRC, 'utf8');
@@ -44,6 +45,8 @@ const VARIANT = {
   // Âm Hư: nửa lam (âm) sáng, nửa đỏ (dương) mờ; Dương Thực ngược lại
   'Âm Hư': (b) => b.replace('stroke="#ef4444" stroke-width="6"', 'stroke="#ef4444" stroke-width="6" opacity="0.25"'),
   'Dương Thực': (b) => b.replace('stroke="#38bdf8" stroke-width="6"', 'stroke="#38bdf8" stroke-width="6" opacity="0.25"'),
+  // Bán Bộ Đạp Thiên: giữ 3 cung cầu của Đạp Thiên Cảnh, lõi trắng sáng thành chấm mờ (chưa đạp lên hẳn)
+  'Bán Bộ Đạp Thiên': (b) => b.replace('<circle cx="50" cy="24" r="8" fill="#ffffff" filter="drop-shadow(0 0 12px #fef08a)"/>', '<circle cx="50" cy="24" r="5" fill="#fef08a" opacity="0.5"/>'),
   // Huyền Kiếp: thêm vòng lôi kiếp nét đứt xoay quanh hình thoi của Không Huyền
   'Huyền Kiếp': (b) => b.replace('<circle cx="50" cy="50" r="8"', '<circle cx="50" cy="50" r="38" fill="none" stroke="#a5b4fc" stroke-width="1.5" stroke-dasharray="3,4" class="realm-spin"/><circle cx="50" cy="50" r="8"'),
 };

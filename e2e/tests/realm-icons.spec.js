@@ -35,13 +35,13 @@ test('Icon cảnh giới động: dùng bộ SVG mới, giữ hoạt ảnh thở
   expect(Math.abs(c1[0] - c2[0])).toBeLessThanOrEqual(0.5);
   expect(Math.abs(c1[1] - c2[1])).toBeLessThanOrEqual(0.5);
 
-  // Bảng cảnh giới: đủ 18 bậc, mỗi bậc một hình riêng, hết mục ghi công game-icons
+  // Bảng cảnh giới: đủ 20 bậc, mỗi bậc một hình riêng, hết mục ghi công game-icons
   await page.getByTestId('cultivation-chip').click();
   const dialog = page.getByRole('dialog', { name: 'Con đường tu luyện' });
   const rows = dialog.getByTestId('realm-row');
-  await expect(rows).toHaveCount(18);
+  await expect(rows).toHaveCount(20);
   const drawings = await rows.locator('svg').evaluateAll((els) => els.map((e) => e.innerHTML));
-  expect(new Set(drawings).size).toBe(18);
+  expect(new Set(drawings).size).toBe(20);
   await expect(dialog.locator('svg[data-fallback]')).toHaveCount(0);
   await expect(dialog).not.toContainText('game-icons');
   for (const svg of await rows.locator('svg').all()) expect(await anim(svg)).toBe('realm-breathe');
@@ -89,3 +89,41 @@ for (const theme of ['white', 'sepia', 'slate']) {
     for (const k of ['title', 'name', 'at', 'total']) expect(contrast(rgb(m[k]), bg), `${theme} ${k}`).toBeGreaterThanOrEqual(4.5);
   });
 }
+
+test('Bước thứ tư: bảng có 4 Bước, Bán Bộ Đạp Thiên (quá độ) và Đạp Thiên Cảnh, danh hiệu dưới Không Kiếp', async ({ page, baseURL }) => {
+  const problems = collectProblems(page);
+  await openLibrary(page, baseURL);
+  await page.getByTestId('cultivation-chip').click();
+  const dialog = page.getByRole('dialog', { name: 'Con đường tu luyện' });
+  await expect(dialog).toBeVisible();
+
+  // Bốn đề mục Bước, Bước 4 có màu riêng (đỏ thẫm)
+  await expect(dialog.locator('.realm-path-buoc')).toHaveCount(4);
+  const head4 = dialog.locator('.realm-path-buoc.buoc-4');
+  await expect(head4).toHaveText('Bước thứ tư · Đạp Thiên siêu thoát');
+  expect(await head4.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(179, 38, 62)');
+
+  const rows = dialog.getByTestId('realm-row');
+  const names = await rows.locator('.realm-row-name').evaluateAll((els) => els.map((e) => e.firstChild.textContent.trim()));
+  expect(names.slice(-3)).toEqual(['Không Kiếp', 'Bán Bộ Đạp Thiên', 'Đạp Thiên Cảnh']);
+
+  // Bán Bộ Đạp Thiên: bậc quá độ có alias; Đạp Thiên Cảnh: đỉnh, mốc 13.490.000
+  const ban = rows.filter({ hasText: 'Bán Bộ Đạp Thiên' });
+  await expect(ban).toContainText('Đạp Thiên Cửu Kiều');
+  await expect(ban).toContainText('12.290.000');
+  const dap = rows.filter({ hasText: 'Đạp Thiên Cảnh' });
+  await expect(dap).toContainText('13.490.000');
+
+  // Danh hiệu chiến lực hiện dưới Không Kiếp
+  await expect(rows.filter({ hasText: 'Không Kiếp' })).toContainText('Kim Tôn · Thiên Tôn · Dược Thiên Tôn · Đại Thiên Tôn');
+
+  // Mỗi bậc mới có icon động riêng, không dùng icon dự phòng
+  for (const n of ['Bán Bộ Đạp Thiên', 'Đạp Thiên Cảnh']) {
+    const icon = dialog.locator(`svg[data-icon="${n}"]`);
+    await expect(icon).toHaveCount(1);
+    expect(await anim(icon)).toBe('realm-breathe');
+  }
+  await expect(dialog.locator('svg[data-fallback]')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+

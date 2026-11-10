@@ -2,10 +2,10 @@ import { useEffect } from 'react';
 import { REALMS, BUOC_NAMES } from '../../shared/cultivation.js';
 import RealmIcon from './RealmIcon';
 
-const BUOC_LABEL = { 1: 'Bước thứ nhất', 2: 'Bước thứ hai', 3: 'Bước thứ ba' };
+const BUOC_LABEL = { 1: 'Bước thứ nhất', 2: 'Bước thứ hai', 3: 'Bước thứ ba', 4: 'Bước thứ tư' };
 const fmt = (n) => n.toLocaleString('vi-VN');
 
-// Bảng "Con đường tu luyện": cả 18 cảnh giới, đánh dấu bậc đang ở và bậc đã qua
+// Bảng "Con đường tu luyện": cả 20 cảnh giới, đánh dấu bậc đang ở và bậc đã qua
 export default function RealmPath({ cultivation, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -47,6 +47,7 @@ export default function RealmPath({ cultivation, onClose }) {
                 {r.name}
                 {r.alias && <small>({r.alias})</small>}
                 {r.quaDo && !r.alias && <small>Quá độ</small>}
+                {r.titles && <small>{r.titles.join(' · ')}</small>}
               </span>
               <span className="realm-row-at">từ {fmt(r.from)}</span>
             </div>
