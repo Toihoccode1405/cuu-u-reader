@@ -2380,7 +2380,7 @@ input[type="range"] {
 .cultivation-realm { display: flex; align-items: center; gap: 5px; color: var(--buoc-color); }
 .cultivation-bar > span { background: var(--buoc-color); }
 .breakthrough-banner { display: flex; align-items: center; gap: 10px; }
-.breakthrough-banner svg { color: var(--buoc-color); filter: brightness(1.5); }
+.breakthrough-banner svg { flex-shrink: 0; }
 .realm-path-overlay {
   position: fixed;
   inset: 0;
@@ -2421,8 +2421,6 @@ input[type="range"] {
 .realm-row-name small { display: block; font-size: 11px; opacity: 0.7; }
 .realm-row-at { font-size: 11px; color: var(--text-color, #2b2418); opacity: 0.6; white-space: nowrap; }
 
-.realm-path-credit { margin-top: 12px; font-size: 11px; opacity: 0.6; text-align: center; }
-.realm-path-credit a { color: inherit; }
 
 /* ---- Thanh công cụ khi đọc: gọn theo cỡ màn hình ---- */
 .reader-header-inner { min-width: 0; }
@@ -2786,6 +2784,7 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
 .brand-text { white-space: nowrap; }
 .header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .search-container { min-width: 0; }
+.user-badge > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-toggle, .search-close, .account-wrap { display: none; }
 .realm-name { white-space: nowrap; }
 
@@ -2805,6 +2804,7 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
   .header-inner { gap: 0.75rem; padding: 0 1rem; }
   .brand { font-size: 1.1rem; }
   .user-badge { padding: 5px 8px; gap: 6px; }
+  .user-badge > span { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* Điện thoại: một hàng gọn; logo chỉ còn con dấu, tìm kiếm là kính lúp, tài khoản gộp một nút */
@@ -2871,5 +2871,23 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
     cursor: pointer;
   }
   .account-menu-item:hover { background: var(--accent-light); }
+}
+
+/* =============================================================================
+   ICON CẢNH GIỚI ĐỘNG (SVG riêng của dự án): thở + vòng xoay quanh tâm
+   ============================================================================= */
+@keyframes realm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes realm-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px currentColor); }
+  50% { transform: scale(1.06); filter: drop-shadow(0 0 8px currentColor); }
+}
+.realm-svg { flex-shrink: 0; animation: realm-breathe 3.5s ease-in-out infinite; }
+.realm-svg .realm-spin {
+  transform-box: view-box;
+  transform-origin: 50px 50px; /* quay tại chỗ quanh tâm khung 100x100 */
+  animation: realm-spin 24s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .realm-svg, .realm-svg .realm-spin { animation: none; }
 }
 

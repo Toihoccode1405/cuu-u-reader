@@ -52,10 +52,6 @@ export default function RealmPath({ cultivation, onClose }) {
             </div>
           </div>
         ))}
-
-        <div className="realm-path-credit">
-          Icon: <a href="https://game-icons.net" target="_blank" rel="noopener noreferrer">game-icons.net</a> (CC BY 3.0)
-        </div>
       </div>
     </div>
   );

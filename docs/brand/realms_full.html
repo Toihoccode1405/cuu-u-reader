@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiên Nghịch - Thập Thất Đại Cảnh Giới</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spin-reverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px currentColor); }
+      50% { transform: scale(1.06); filter: drop-shadow(0 0 16px currentColor); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-4px); }
+    }
+    .spin-slow { animation: spin-slow 24s linear infinite; }
+    .spin-rev { animation: spin-reverse 18s linear infinite; }
+    .breathe { animation: breathe 3.5s ease-in-out infinite; }
+    .float { animation: float 3s ease-in-out infinite; }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(251, 191, 36, 0.25); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(251, 191, 36, 0.5); }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-2 sm:p-4 select-none font-sans">
+  <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 shadow-2xl max-w-5xl mx-auto backdrop-blur-xl">
+    
+    <!-- Top Bar: Title & Filter Controls -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border)]">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-amber-400 animate-ping"></span>
+          <h1 class="text-xl sm:text-2xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500">
+            TIÊN NGHỊCH • ĐẠI CẢNH GIỚI ĐỒ
+          </h1>
+        </div>
+        <p class="text-xs text-[var(--muted-foreground)] mt-1">
+          Hệ thống 17 Huy Hiệu Cảnh Giới độc quyền • Thuận vi phàm, nghịch tắc tiên
+        </p>
+      </div>
+
+      <!-- View & Step Switchers -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="inline-flex p-1 rounded-xl bg-[var(--background)] border border-[var(--border)]" id="view-mode-toggle">
+          <button onclick="setViewMode('grid')" id="btn-grid" class="px-3 py-1 rounded-lg text-xs font-semibold transition-all bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow">
+            Tất Cả (Grid)
+          </button>
+          <button onclick="setViewMode('focus')" id="btn-focus" class="px-3 py-1 rounded-lg text-xs font-semibold transition-all text-[var(--muted-foreground)] hover:text-white">
+            Chi Tiết (Focus)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step Filters -->
+    <div class="flex gap-2 overflow-x-auto py-3 no-scrollbar border-b border-[var(--border)]/60" id="step-filter-bar">
+      <button onclick="filterStep(0)" class="step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-amber-400 text-black shadow-md shadow-amber-500/20" data-step="0">
+        Toàn Bộ (17)
+      </button>
+      <button onclick="filterStep(1)" class="step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)] hover:border-cyan-500/50" data-step="1">
+        Bước 1: Nhất Bộ (8)
+      </button>
+      <button onclick="filterStep(2)" class="step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)] hover:border-red-500/50" data-step="2">
+        Bước 2: Niết Cảnh (4)
+      </button>
+      <button onclick="filterStep(3)" class="step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)] hover:border-purple-500/50" data-step="3">
+        Bước 3: Tam Bộ (4)
+      </button>
+      <button onclick="filterStep(4)" class="step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)] hover:border-yellow-500/50" data-step="4">
+        Bước 4: Đạp Thiên (1)
+      </button>
+    </div>
+
+    <!-- VIEW 1: GRID OF ALL BADGES -->
+    <div id="view-grid-container" class="mt-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3" id="badges-grid">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- VIEW 2: FOCUS / INSPECTOR (Modal/Card Style) -->
+    <div id="view-focus-container" class="mt-4 hidden">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-5 bg-[var(--background)] border border-[var(--border)] rounded-2xl p-5 shadow-inner">
+        <!-- Left Column: Big Interactive Badge Display -->
+        <div class="md:col-span-5 flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-r border-[var(--border)] relative overflow-hidden">
+          <div class="absolute inset-0 bg-radial from-amber-500/10 via-transparent to-transparent pointer-events-none" id="focus-aura"></div>
+          
+          <div class="relative w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center float">
+            <!-- Rotating Ornate Ring -->
+            <div class="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/40 spin-slow"></div>
+            <div class="absolute inset-2 rounded-full border border-amber-500/20 spin-rev"></div>
+            <!-- Glow Core -->
+            <div class="w-36 h-36 sm:w-44 sm:h-44 rounded-full flex items-center justify-center p-2 shadow-2xl relative" id="focus-badge-icon">
+              <!-- SVG -->
+            </div>
+          </div>
+
+          <div class="mt-4 text-center">
+            <span class="inline-block text-[11px] font-mono px-3 py-1 rounded-full uppercase tracking-wider bg-amber-500/10 border border-amber-500/30 text-amber-300" id="focus-step-name">
+              BƯỚC THỨ NHẤT
+            </span>
+            <h2 class="text-2xl font-black text-white mt-1 tracking-wide" id="focus-name">Ngưng Khí Kỳ</h2>
+            <div class="text-xs text-[var(--muted-foreground)] font-mono" id="focus-eng">Qi Condensation</div>
+          </div>
+        </div>
+
+        <!-- Right Column: Sub-Realms & Lore Breakdown -->
+        <div class="md:col-span-7 flex flex-col justify-between space-y-4">
+          <!-- Quote -->
+          <div class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs italic text-amber-200/90 flex items-center gap-2">
+            <span class="text-base text-amber-400 font-serif">“</span>
+            <span id="focus-quote">Thuận vi phàm, nghịch tắc tiên, chỉ tại nhất niệm gian...</span>
+            <span class="text-base text-amber-400 font-serif">”</span>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Đặc điểm ý cảnh & căn cơ:</div>
+            <p class="text-sm text-[var(--foreground)]/90 mt-1 leading-relaxed bg-[var(--card)] p-3 rounded-xl border border-[var(--border)]" id="focus-desc">
+              Vòng xoáy thanh khí mộc mạc thu nạp thiên địa linh khí vào đan điền, chuyển hóa thân thể người phàm thành tiên nhân.
+            </p>
+          </div>
+
+          <!-- Sub-realms (Tiểu cảnh giới) -->
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">
+              Phân cấp Tiểu Cảnh Giới:
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="focus-subrealms">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- Quick Navigation -->
+          <div class="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+            <button onclick="prevBadge()" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] bg-[var(--card)] hover:border-amber-400 text-[var(--foreground)] transition flex items-center gap-1">
+              ← Cảnh Giới Trước
+            </button>
+            <span class="text-xs font-mono text-[var(--muted-foreground)]" id="focus-index">01 / 17</span>
+            <button onclick="nextBadge()" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] bg-[var(--card)] hover:border-amber-400 text-[var(--foreground)] transition flex items-center gap-1">
+              Cảnh Giới Kế →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const realmsData = [
+      // BƯỚC 1: NHẤT BỘ TUNG HOÀNH
+      {
+        id: 1, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Ngưng Khí Kỳ", eng: "Qi Condensation",
+        tone: "Thanh Lam • Đồng Cổ", color: "#38bdf8",
+        quote: "Thiên địa linh khí quy về đan điền, người phàm chập chững bước lên tiên lộ.",
+        desc: "Khí tức sơ khai mộc mạc, vận khí chu thiên, thu nạp linh khí đất trời tôi luyện kinh mạch ngũ tạng, mở đầu cho hành trình nghịch thiên.",
+        subRealms: ["Tầng 1 - 3 (Sơ kỳ)", "Tầng 4 - 7 (Trung kỳ)", "Tầng 8 - 13 (Hậu kỳ)", "Tầng 14 - 15 (Viên mãn)"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-cyan-400">
+          <circle cx="50" cy="50" r="44" fill="#031525" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="50" cy="50" r="34" fill="none" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="4,4" class="spin-slow"/>
+          <circle cx="50" cy="50" r="24" fill="#082f49" stroke="#38bdf8" stroke-width="1"/>
+          <!-- Qi Vortex -->
+          <path d="M50 20 C68 20 80 38 75 55 C70 70 50 78 40 68 C30 58 35 40 50 35 C58 32 62 42 58 48 C55 52 48 52 47 48" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="4" fill="#e0f2fe" filter="drop-shadow(0 0 4px #38bdf8)"/>
+        </svg>`
+      },
+      {
+        id: 2, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Trúc Cơ Kỳ", eng: "Foundation Establishment",
+        tone: "Ngọc Lục • Ngân Bạc", color: "#34d399",
+        quote: "Đạo cơ vững như bàn thạch, linh khí hóa dịch, thoát phàm thành tiên.",
+        desc: "Linh khí ngưng tụ thành chất lỏng linh dịch, xây dựng ngọc đài đạo cơ vĩnh cửu. Thọ nguyên tăng lên vài trăm năm, ngự kiếm xuất trần.",
+        subRealms: ["Trúc Cơ Sơ kỳ", "Trúc Cơ Trung kỳ", "Trúc Cơ Hậu kỳ", "Giả Đan cảnh"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-emerald-400">
+          <circle cx="50" cy="50" r="44" fill="#022c22" stroke="#34d399" stroke-width="2.5"/>
+          <polygon points="50,14 82,34 82,66 50,86 18,66 18,34" fill="#064e3b" stroke="#6ee7b7" stroke-width="1.5"/>
+          <polygon points="50,26 70,40 70,60 50,74 30,60 30,40" fill="#022c22" stroke="#34d399" stroke-width="1.5"/>
+          <circle cx="50" cy="50" r="9" fill="#a7f3d0" filter="drop-shadow(0 0 6px #34d399)"/>
+        </svg>`
+      },
+      {
+        id: 3, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Kết Đan Kỳ", eng: "Core Formation",
+        tone: "Hoàng Kim • Đan Hỏa", color: "#fbbf24",
+        quote: "Nhất lạp Kim Đan nuốt vào bụng, mới biết tính mệnh do ta không do trời.",
+        desc: "Linh dịch ngưng kết thành một viên Kim Đan tròn trịa phát sáng hoàng kim vô thượng trong tử phủ. Đan hỏa cuồn cuộn, một phương bá chủ.",
+        subRealms: ["Kết Đan Sơ kỳ", "Kết Đan Trung kỳ", "Kết Đan Hậu kỳ", "Giả Anh cảnh"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-amber-400">
+          <circle cx="50" cy="50" r="44" fill="#291400" stroke="#fbbf24" stroke-width="3"/>
+          <circle cx="50" cy="50" r="32" fill="#451a03" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6,3" class="spin-slow"/>
+          <circle cx="50" cy="50" r="18" fill="#fbbf24" filter="drop-shadow(0 0 10px #f59e0b)"/>
+          <circle cx="45" cy="45" r="5" fill="#fef3c7"/>
+          <!-- Radiating Rays -->
+          <line x1="50" y1="18" x2="50" y2="24" stroke="#fbbf24" stroke-width="2"/>
+          <line x1="50" y1="82" x2="50" y2="76" stroke="#fbbf24" stroke-width="2"/>
+          <line x1="18" y1="50" x2="24" y2="50" stroke="#fbbf24" stroke-width="2"/>
+          <line x1="82" y1="50" x2="76" y2="50" stroke="#fbbf24" stroke-width="2"/>
+        </svg>`
+      },
+      {
+        id: 4, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Nguyên Anh Kỳ", eng: "Nascent Soul",
+        tone: "Lam Tím • Linh Thể", color: "#818cf8",
+        quote: "Phá đan xuất anh, hồn phách bất diệt, ngao du thái hư giữa trời đất.",
+        desc: "Đập vỡ Kim Đan thai nghén ra một tôn Nguyên Anh tí hon giống hệt bản thể. Nhục thân dù hủy hoại, chỉ cần Nguyên Anh còn thì trường tồn bất tử.",
+        subRealms: ["Nguyên Anh Sơ kỳ", "Nguyên Anh Trung kỳ", "Nguyên Anh Hậu kỳ", "Đại Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-indigo-400">
+          <circle cx="50" cy="50" r="44" fill="#130e2e" stroke="#818cf8" stroke-width="2.5"/>
+          <circle cx="50" cy="50" r="35" fill="none" stroke="#6366f1" stroke-width="1.5"/>
+          <!-- Meditating Infant Silhouette -->
+          <circle cx="50" cy="33" r="8" fill="#c7d2fe"/>
+          <path d="M42 45 C42 41 58 41 58 45 L62 62 C62 67 38 67 38 62 Z" fill="#a5b4fc"/>
+          <path d="M34 64 C34 58 66 58 66 64 C66 70 34 70 34 64 Z" fill="#818cf8"/>
+        </svg>`
+      },
+      {
+        id: 5, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Hoá Thần Kỳ", eng: "Soul Transformation",
+        tone: "Sinh - Tử Ý Cảnh • Hắc Bạch", color: "#f8fafc",
+        quote: "Sinh tử luân hồi, chỉ tại nhất niệm. Sinh giả tử chi duyên, tử giả sinh chi thỉ.",
+        desc: "Cột mốc thần thánh trong Tiên Nghịch! Không còn dùng linh lực thông thường mà khai mở Đạo Niệm Ý Cảnh. Vương Lâm lĩnh ngộ Sinh Tử Đồ độc bộ thiên hạ.",
+        subRealms: ["Ý Cảnh Sơ Ngộ", "Hóa Thần Sơ kỳ", "Hóa Thần Trung kỳ", "Hóa Thần Hậu kỳ"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-slate-100">
+          <circle cx="50" cy="50" r="44" fill="#020617" stroke="#cbd5e1" stroke-width="3"/>
+          <!-- Taiji Yin Yang -->
+          <path d="M50 10 A40 40 0 0 0 50 90 A20 20 0 0 1 50 50 A20 20 0 0 0 50 10" fill="#f8fafc"/>
+          <circle cx="50" cy="30" r="6" fill="#020617"/>
+          <circle cx="50" cy="70" r="6" fill="#f8fafc"/>
+        </svg>`
+      },
+      {
+        id: 6, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Anh Biến Kỳ", eng: "Soul Transformation Ascendant",
+        tone: "Tiên Khí • Lôi Hỏa", color: "#f87171",
+        quote: "Tiên khí nhập thể, Nguyên Anh thuế biến, đạp toái hư không nghịch thiên hành.",
+        desc: "Hấp thụ tiên khí của Tiên Giới cổ xưa, biến hóa Nguyên Anh thành Tiên Phách. Mỗi đòn xuất thủ đều mang tiên uy hủy thiên diệt địa.",
+        subRealms: ["Anh Biến Sơ kỳ", "Anh Biến Trung kỳ", "Anh Biến Hậu kỳ", "Đại Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-red-400">
+          <circle cx="50" cy="50" r="44" fill="#2d0606" stroke="#f87171" stroke-width="3"/>
+          <polygon points="50,12 62,38 90,50 62,62 50,88 38,62 10,50 38,38" fill="#7f1d1d" stroke="#ef4444" stroke-width="2"/>
+          <circle cx="50" cy="50" r="12" fill="#fca5a5" filter="drop-shadow(0 0 8px #f87171)"/>
+        </svg>`
+      },
+      {
+        id: 7, step: 1, stepTitle: "BƯỚC 1: NHẤT BỘ TUNG HOÀNH",
+        name: "Vấn Đỉnh Kỳ", eng: "Ascension Peak",
+        tone: "Bạch Kim • Vấn Đỉnh Thương Khung", color: "#fde047",
+        quote: "Đạo tâm vấn đỉnh thương thiên, đỉnh thiên hạ ai dám cùng tranh?",
+        desc: "Đỉnh phong tột cùng của Bước Thứ Nhất! Đạo tâm đã hoàn mỹ, khí thế vấn đỉnh thiên địa, uy chấn cả một tinh cầu tu chân.",
+        subRealms: ["Vấn Đỉnh Sơ kỳ", "Vấn Đỉnh Trung kỳ", "Vấn Đỉnh Hậu kỳ", "Vấn Đỉnh Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-yellow-300">
+          <circle cx="50" cy="50" r="44" fill="#291e03" stroke="#fde047" stroke-width="3"/>
+          <!-- Sovereign Sword Peak -->
+          <line x1="50" y1="16" x2="50" y2="82" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+          <polygon points="50,12 58,26 42,26" fill="#fef08a"/>
+          <line x1="32" y1="62" x2="68" y2="62" stroke="#facc15" stroke-width="4"/>
+          <circle cx="50" cy="40" r="4" fill="#ffffff"/>
+        </svg>`
+      },
+      {
+        id: 8, step: 1, stepTitle: "BƯỚC 1: QUÁ ĐỘ CẢNH GIỚI",
+        name: "Âm Hư - Dương Thực", eng: "Yin-Yang Void Transition",
+        tone: "Hàn Băng & Viêm Hỏa", color: "#ec4899",
+        quote: "Âm dương hư thực dung hòa, cây cầu nối liền Phàm giới và Niết cảnh.",
+        desc: "Giai đoạn quá độ cực kỳ then chốt: Âm Hư luyện khí hư vô, Dương Thực đúc thể chân thực. Hai luồng cực âm và cực dương xoắn bện để chạm tới Quy Tắc.",
+        subRealms: ["Nhập Âm Hư", "Âm Hư Viên Mãn", "Khai Dương Thực", "Dương Thực Đỉnh Phong"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-pink-400">
+          <circle cx="50" cy="50" r="44" fill="#120517" stroke="#ec4899" stroke-width="3"/>
+          <!-- Dual Swirl -->
+          <path d="M50 16 A34 34 0 0 1 50 84" fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/>
+          <path d="M50 16 A34 34 0 0 0 50 84" fill="none" stroke="#ef4444" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="7" fill="#fbcfe8" filter="drop-shadow(0 0 6px #ec4899)"/>
+        </svg>`
+      },
+
+      // BƯỚC 2: NHỊ BỘ PHI THĂNG (CHỮ NIẾT)
+      {
+        id: 9, step: 2, stepTitle: "BƯỚC 2: NHỊ BỘ PHI THĂNG",
+        name: "Khuy Niết Kỳ", eng: "Scrutiny of Nirvana",
+        tone: "Tử Khí • Quy Tắc Chi Nhãn", color: "#c084fc",
+        quote: "Khuy kiến thiên đạo quy tắc, nhìn thấu chân giả thế gian.",
+        desc: "Bước chân đầu tiên vào Nhị Bộ! Mở ra con mắt quy tắc nhìn thấu sợi tơ thiên đạo, biến ý cảnh thành quy tắc thần thông chân chính.",
+        subRealms: ["Khuy Niết Sơ kỳ", "Khuy Niết Trung kỳ", "Khuy Niết Hậu kỳ", "Khuy Niết Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-purple-400">
+          <circle cx="50" cy="50" r="44" fill="#1a0b2e" stroke="#c084fc" stroke-width="3"/>
+          <path d="M16 50 Q50 18 84 50 Q50 82 16 50 Z" fill="none" stroke="#e9d5ff" stroke-width="3"/>
+          <circle cx="50" cy="50" r="14" fill="#a855f7"/>
+          <circle cx="50" cy="50" r="5" fill="#ffffff" filter="drop-shadow(0 0 6px #c084fc)"/>
+        </svg>`
+      },
+      {
+        id: 10, step: 2, stepTitle: "BƯỚC 2: NHỊ BỘ PHI THĂNG",
+        name: "Tịnh Niết Kỳ", eng: "Purity of Nirvana",
+        tone: "Bạch Diễm Thuần Khiết", color: "#f1f5f9",
+        quote: "Tịnh hóa thân tâm, ngọn lửa niết bàn thiêu cháy tạp niệm phàm trần.",
+        desc: "Dùng ngọn lửa Niết Bàn tinh khiết thanh tẩy tạp niệm và quy tắc, khiến đạo tâm sáng tỏ như gương sáng, pháp lực thuần tịnh vô song.",
+        subRealms: ["Tịnh Niết Sơ kỳ", "Tịnh Niết Trung kỳ", "Tịnh Niết Hậu kỳ", "Tịnh Niết Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-slate-100">
+          <circle cx="50" cy="50" r="44" fill="#0a0f1d" stroke="#f1f5f9" stroke-width="3"/>
+          <!-- Nirvana Flame -->
+          <path d="M50 16 C66 38 72 58 60 76 C52 86 38 84 34 72 C30 58 42 42 50 16 Z" fill="#f8fafc" opacity="0.9"/>
+          <circle cx="48" cy="60" r="7" fill="#38bdf8"/>
+        </svg>`
+      },
+      {
+        id: 11, step: 2, stepTitle: "BƯỚC 2: NHỊ BỘ PHI THĂNG",
+        name: "Toái Niết Kỳ", eng: "Shattered Nirvana",
+        tone: "Toái Diệt Quy Tắc • Bạo Liệt", color: "#fb7185",
+        quote: "Toái diệt mà tái sinh, chưởng khống quy tắc nghiền nát càn khôn.",
+        desc: "Đập vỡ quy tắc để tái cấu trúc! Sức mạnh bộc phát có thể xé rách không gian, chấn động tinh vực, đỉnh cao của Nhị Bộ.",
+        subRealms: ["Toái Niết Sơ kỳ", "Toái Niết Trung kỳ", "Toái Niết Hậu kỳ", "Toái Niết Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-rose-400">
+          <circle cx="50" cy="50" r="44" fill="#2d0812" stroke="#fb7185" stroke-width="3"/>
+          <polygon points="50,18 70,44 50,38 30,44" fill="#f43f5e"/>
+          <polygon points="76,48 60,74 54,54" fill="#fb7185"/>
+          <polygon points="24,48 40,74 46,54" fill="#fda4af"/>
+          <circle cx="50" cy="48" r="4" fill="#ffffff"/>
+        </svg>`
+      },
+      {
+        id: 12, step: 2, stepTitle: "BƯỚC 2: QUÁ ĐỘ CẢNH GIỚI",
+        name: "Thiên Nhân Ngũ Suy", eng: "Five Declines of Heaven & Man",
+        tone: "Ngũ Suy Kiếp • Nghịch Thiên Bất Tử", color: "#c084fc",
+        quote: "Năm kiếp nạn trời giáng: thân, hồn, pháp, thọ, tâm. Vượt qua là xưng Đại Năng!",
+        desc: "Khảo nghiệm sinh tử lớn nhất của tu sĩ: Nhục Thân suy, Pháp Lực suy, Thần Niệm suy, Thọ Mệnh suy, Đạo Tâm suy. Vương Lâm lấy Phá Không Ngũ Chỉ xé rách kiếp lôi.",
+        subRealms: ["Đệ Nhất Suy (Thân)", "Đệ Nhị Suy (Pháp)", "Đệ Tam Suy (Hồn)", "Đệ Tứ & Ngũ Suy (Thọ & Tâm)"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-purple-300">
+          <circle cx="50" cy="50" r="44" fill="#130924" stroke="#a855f7" stroke-width="3"/>
+          <!-- 5 Lightning Bolts -->
+          <path d="M50 14 L42 42 L58 42 L36 86 L64 48 L48 48 Z" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+          <circle cx="50" cy="50" r="6" fill="#f43f5e" filter="drop-shadow(0 0 6px #f43f5e)"/>
+        </svg>`
+      },
+
+      // BƯỚC 3: TAM BỘ VÔ BIÊN (TỨ KHÔNG CẢNH)
+      {
+        id: 13, step: 3, stepTitle: "BƯỚC 3: TAM BỘ VÔ BIÊN",
+        name: "Không Niết Kỳ", eng: "Nirvana Void",
+        tone: "Hư Không Tịch Diệt", color: "#38bdf8",
+        quote: "Hư không vô tận, bổn nguyên thành hình, nhất niệm vạn linh sinh diệt.",
+        desc: "Bước vào Tam Bộ Đại Năng xưng bá tinh không! Bổn nguyên đại đạo đúc thành, dung nhập vào hư vô vạn giới.",
+        subRealms: ["Không Niết Sơ kỳ", "Không Niết Trung kỳ", "Không Niết Hậu kỳ", "Không Niết Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-sky-400">
+          <circle cx="50" cy="50" r="44" fill="#041a2f" stroke="#38bdf8" stroke-width="3"/>
+          <circle cx="50" cy="50" r="28" fill="#0369a1" opacity="0.6"/>
+          <circle cx="50" cy="50" r="14" fill="#0c4a6e"/>
+          <circle cx="50" cy="50" r="4" fill="#e0f2fe" filter="drop-shadow(0 0 8px #38bdf8)"/>
+        </svg>`
+      },
+      {
+        id: 14, step: 3, stepTitle: "BƯỚC 3: TAM BỘ VÔ BIÊN",
+        name: "Không Linh Kỳ", eng: "Spirit Void",
+        tone: "Linh Quang Tinh Hà", color: "#2dd4bf",
+        quote: "Hư không sinh linh, thần niệm bao trùm vạn dặm tinh hà Tiên Cương.",
+        desc: "Thần niệm thấu triệt hư không, bổn nguyên chân thân ngưng tụ, mỗi lời nói ra đều hóa thành pháp tắc chi linh của càn khôn.",
+        subRealms: ["Không Linh Sơ kỳ", "Không Linh Trung kỳ", "Không Linh Hậu kỳ", "Không Linh Viên Mãn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-teal-400">
+          <circle cx="50" cy="50" r="44" fill="#032424" stroke="#2dd4bf" stroke-width="3"/>
+          <!-- Lotus Void Blossom -->
+          <circle cx="50" cy="34" r="11" fill="#2dd4bf" opacity="0.7"/>
+          <circle cx="66" cy="56" r="11" fill="#2dd4bf" opacity="0.7"/>
+          <circle cx="34" cy="56" r="11" fill="#2dd4bf" opacity="0.7"/>
+          <circle cx="50" cy="50" r="7" fill="#ccfbf1"/>
+        </svg>`
+      },
+      {
+        id: 15, step: 3, stepTitle: "BƯỚC 3: TAM BỘ VÔ BIÊN",
+        name: "Không Huyền Kỳ", eng: "Arcane Void & Tribulation",
+        tone: "Cửu Lần Huyền Kiếp", color: "#818cf8",
+        quote: "Cửu kiếp lôi đình tôi luyện bổn nguyên, Tiên Cương đại lục ai dám bất phục?",
+        desc: "Vượt qua chín tầng Huyền Kiếp lôi đình để đúc nên Bổn Nguyên Chân Thân bất diệt, chiến lực siêu việt cả thiên đạo.",
+        subRealms: ["Không Huyền Tiền kỳ", "Không Huyền Trung kỳ", "Không Huyền Hậu kỳ", "Huyền Kiếp Cửu Tầng"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-indigo-400">
+          <circle cx="50" cy="50" r="44" fill="#110d29" stroke="#818cf8" stroke-width="3"/>
+          <polygon points="50,14 84,50 50,86 16,50" fill="#312e81" stroke="#a5b4fc" stroke-width="2"/>
+          <polygon points="50,26 74,50 50,74 26,50" fill="#1e1b4b"/>
+          <circle cx="50" cy="50" r="8" fill="#e0e7ff" filter="drop-shadow(0 0 8px #818cf8)"/>
+        </svg>`
+      },
+      {
+        id: 16, step: 3, stepTitle: "BƯỚC 3: ĐẠI NĂNG ĐỈNH PHONG",
+        name: "Không Kiếp (Đại Thiên Tôn)", eng: "Grand Empyrean Peak",
+        tone: "Cổ Thần Cửu Tinh • Vương Tọa", color: "#f59e0b",
+        quote: "Cửu Tinh Cổ Thần chấn nhiếp chư thiên, Đại Thiên Tôn thần tọa duy ngã độc tôn!",
+        desc: "Đỉnh phong tối thượng của Tam Bộ! Nắm giữ cửu đại bổn nguyên và 9 ngôi sao Cổ Thần, danh hiệu tôn quý nhất: Kim Tôn, Thiên Tôn, Dược Thiên Tôn, Đại Thiên Tôn.",
+        subRealms: ["Kim Tôn", "Thiên Tôn", "Dược Thiên Tôn", "Đại Thiên Tôn"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-amber-400">
+          <circle cx="50" cy="50" r="44" fill="#331402" stroke="#f59e0b" stroke-width="3.5"/>
+          <!-- Imperial Star Core -->
+          <polygon points="50,20 56,36 74,36 60,46 66,64 50,54 34,64 40,46 26,36 44,36" fill="#fbbf24" stroke="#d97706" stroke-width="1.5"/>
+          <circle cx="50" cy="50" r="7" fill="#ffffff" filter="drop-shadow(0 0 8px #fbbf24)"/>
+        </svg>`
+      },
+
+      // BƯỚC 4: ĐẠP THIÊN CẢNH (SIÊU THOÁT)
+      {
+        id: 17, step: 4, stepTitle: "BƯỚC 4: ĐẠP THIÊN CẢNH",
+        name: "Đạp Thiên Cảnh", eng: "Heaven-Treading Realm",
+        tone: "Đạp Thiên Cửu Kiều • Siêu Thoát Càn Khôn", color: "#fef08a",
+        quote: "Đạp Thiên Cửu Kiều vượt hỗn độn, phá thiên diệt địa, siêu thoát vạn cổ!",
+        desc: "Bước thứ tư tối thượng! Bước qua chín cây cầu Đạp Thiên Cửu Kiều, giẫm nát mọi quy tắc thiên đạo, siêu thoát sinh tử luân hồi, đứng trên cả Hư Vô.",
+        subRealms: ["Bán Bộ Đạp Thiên", "Đạp Thiên Kiều 1-3", "Đạp Thiên Kiều 4-8", "Đệ Cửu Kiều - Siêu Thoát!"],
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full breathe text-yellow-200">
+          <circle cx="50" cy="50" r="44" fill="#171202" stroke="#fef08a" stroke-width="4"/>
+          <!-- Nine Celestial Bridges Arc -->
+          <path d="M18 78 Q50 16 82 78" fill="none" stroke="#fef08a" stroke-width="4" stroke-linecap="round"/>
+          <path d="M26 70 Q50 26 74 70" fill="none" stroke="#fde047" stroke-width="3" stroke-linecap="round"/>
+          <path d="M34 62 Q50 36 66 62" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"/>
+          <!-- Supreme Transcendence Core -->
+          <circle cx="50" cy="24" r="8" fill="#ffffff" filter="drop-shadow(0 0 12px #fef08a)"/>
+        </svg>`
+      }
+    ];
+
+    let currentFilterStep = 0;
+    let selectedBadgeId = 1;
+
+    function renderGrid() {
+      const container = document.getElementById('badges-grid');
+      const filtered = currentFilterStep === 0 
+        ? realmsData 
+        : realmsData.filter(r => r.step === currentFilterStep);
+
+      container.innerHTML = filtered.map(r => `
+        <div onclick="openBadgeFocus(${r.id})" 
+             class="group relative bg-[var(--card)] hover:bg-[var(--card)]/90 border border-[var(--border)] hover:border-amber-400/80 rounded-2xl p-3 flex flex-col items-center text-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/10">
+          
+          <!-- Step Pill -->
+          <div class="w-full flex justify-between items-center text-[10px] text-[var(--muted-foreground)] font-mono mb-2">
+            <span class="px-1.5 py-0.5 rounded bg-black/40 border border-white/5">B.${r.step}</span>
+            <span class="font-bold text-amber-400/80">#${String(r.id).padStart(2, '0')}</span>
+          </div>
+
+          <!-- SVG Badge -->
+          <div class="w-20 h-20 sm:w-22 sm:h-22 my-1 flex items-center justify-center relative">
+            <div class="absolute inset-0 rounded-full border border-dashed border-amber-500/20 group-hover:border-amber-400/60 spin-slow"></div>
+            <div class="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center p-1">
+              ${r.svg}
+            </div>
+          </div>
+
+          <!-- Title -->
+          <h3 class="text-xs font-bold text-[var(--foreground)] group-hover:text-amber-300 mt-2 transition">
+            ${r.name}
+          </h3>
+          <div class="text-[10px] text-[var(--muted-foreground)] font-mono truncate w-full mt-0.5">
+            ${r.eng}
+          </div>
+
+          <!-- Quick subrealm count -->
+          <div class="mt-2 text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-[var(--muted-foreground)] group-hover:bg-amber-500/10 group-hover:text-amber-300 transition">
+            ${r.subRealms.length} Tiểu cảnh giới
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openBadgeFocus(id) {
+      selectedBadgeId = id;
+      setViewMode('focus');
+      updateFocusCard();
+    }
+
+    function updateFocusCard() {
+      const r = realmsData.find(x => x.id === selectedBadgeId);
+      if (!r) return;
+
+      document.getElementById('focus-step-name').textContent = r.stepTitle;
+      document.getElementById('focus-name').textContent = r.name;
+      document.getElementById('focus-eng').textContent = r.eng;
+      document.getElementById('focus-quote').textContent = r.quote;
+      document.getElementById('focus-desc').textContent = r.desc;
+      document.getElementById('focus-badge-icon').innerHTML = r.svg;
+      document.getElementById('focus-index').textContent = `${String(r.id).padStart(2, '0')} / 17`;
+
+      // Render Sub-realms
+      const subContainer = document.getElementById('focus-subrealms');
+      subContainer.innerHTML = r.subRealms.map((s, idx) => `
+        <div class="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-left">
+          <div class="text-[10px] text-amber-400 font-mono font-bold">Cấp 0${idx + 1}</div>
+          <div class="text-xs font-semibold text-[var(--foreground)] mt-0.5">${s}</div>
+        </div>
+      `).join('');
+    }
+
+    function nextBadge() {
+      selectedBadgeId = selectedBadgeId >= realmsData.length ? 1 : selectedBadgeId + 1;
+      updateFocusCard();
+    }
+
+    function prevBadge() {
+      selectedBadgeId = selectedBadgeId <= 1 ? realmsData.length : selectedBadgeId - 1;
+      updateFocusCard();
+    }
+
+    function setViewMode(mode) {
+      const grid = document.getElementById('view-grid-container');
+      const focus = document.getElementById('view-focus-container');
+      const btnGrid = document.getElementById('btn-grid');
+      const btnFocus = document.getElementById('btn-focus');
+
+      if (mode === 'grid') {
+        grid.classList.remove('hidden');
+        focus.classList.add('hidden');
+        btnGrid.className = "px-3 py-1 rounded-lg text-xs font-semibold transition-all bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow";
+        btnFocus.className = "px-3 py-1 rounded-lg text-xs font-semibold transition-all text-[var(--muted-foreground)] hover:text-white";
+      } else {
+        grid.classList.add('hidden');
+        focus.classList.remove('hidden');
+        btnFocus.className = "px-3 py-1 rounded-lg text-xs font-semibold transition-all bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow";
+        btnGrid.className = "px-3 py-1 rounded-lg text-xs font-semibold transition-all text-[var(--muted-foreground)] hover:text-white";
+        updateFocusCard();
+      }
+    }
+
+    function filterStep(step) {
+      currentFilterStep = step;
+      document.querySelectorAll('.step-filter-btn').forEach(btn => {
+        const bStep = Number(btn.getAttribute('data-step'));
+        if (bStep === step) {
+          btn.className = "step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-amber-400 text-black shadow-md shadow-amber-500/20";
+        } else {
+          btn.className = "step-filter-btn px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)] hover:border-amber-400/40";
+        }
+      });
+      renderGrid();
+    }
+
+    // Initialize
+    renderGrid();
+    updateFocusCard();
+  </script>
+</body>
+</html>
