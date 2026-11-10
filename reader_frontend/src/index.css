@@ -2734,3 +2734,41 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
 .reader-header.hidden .header-progress { opacity: 0; }
 
 .header-progress { transform: scaleX(0); }
+
+/* =============================================================================
+   TỐI ƯU ĐIỆN THOẠI (<= 640px)
+   ============================================================================= */
+@media (max-width: 640px) {
+  /* Cột chữ hẹp: căn đều hai bên làm khe trắng to, nên luôn căn trái như trang mẫu */
+  .reader-body.text-justify p,
+  .reader-body.text-justify div { text-align: left !important; }
+  .reader-card { padding: 1.5rem 1rem 2rem; }
+  .reader-card .chapter-head-title { font-size: 1.45em; line-height: 1.25; }
+  .chapter-head { margin-bottom: 1.5rem; }
+  .chapter-divider { margin-top: 1rem; }
+  .chapter-meta { margin-top: 0.75rem; }
+  .reader-content-box { padding-bottom: calc(6rem + var(--safe-bottom)); }
+
+  /* Thanh nút nổi ẩn cùng thanh đầu khi cuộn xuống để khỏi che chữ; hiện lại khi cuộn ngược hoặc gần cuối chương */
+  .reader-pill { transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s; }
+  .reader-pill.pill-away {
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, 120%);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s 0.2s;
+  }
+
+  /* Menu ⋯: bám mép màn hình, một dòng mỗi mục, bỏ Phím tắt (điện thoại không có bàn phím) */
+  .tb-menu {
+    position: fixed;
+    top: calc(var(--reader-header-height, 56px) + var(--safe-top) + 4px);
+    right: 8px;
+    left: auto;
+    width: min(300px, calc(100vw - 16px));
+    min-width: 0;
+  }
+  .tb-menu-item { font-size: 0.875rem; white-space: nowrap; gap: 10px; }
+  .tb-menu-item.tb-hide-phone { display: none; }
+}
+

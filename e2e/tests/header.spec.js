@@ -86,7 +86,11 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
     await header.getByRole('button', { name: 'Thêm chức năng' }).click();
     const menu = page.getByRole('menu', { name: 'Thêm chức năng' });
     await expect(menu).toBeVisible();
-    for (const t of MENU_ITEMS) await expect(menu.getByRole('menuitem', { name: t })).toBeVisible();
+    // "Phím tắt" vô dụng trên điện thoại (không có bàn phím) nên không hiện ở đó
+    for (const t of MENU_ITEMS) {
+      if (name === 'phone' && t === 'Phím tắt (?)') await expect(menu.getByRole('menuitem', { name: t })).toHaveCount(0);
+      else await expect(menu.getByRole('menuitem', { name: t })).toBeVisible();
+    }
     await menu.getByRole('menuitem', { name: 'Danh sách cờ đã cắm (M)' }).click();
     await expect(page.locator('.drawer-overlay.open')).toHaveCount(1);
     await expect(menu).toHaveCount(0);

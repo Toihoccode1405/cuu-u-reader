@@ -50,6 +50,8 @@ export default function App() {
   const [headerVisible, setHeaderVisible] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const upDistRef = useRef(0);
+  const [nearEnd, setNearEnd] = useState(false); // gần cuối chương: điện thoại phải thấy nút Chương sau
+  const nearEndRef = useRef(false);
   const headerQuietUntilRef = useRef(0); // sau khi mở chương, cuộn tự động về vị trí đọc dở không được làm ẩn thanh
 
   // Drawers & Settings
@@ -1197,7 +1199,7 @@ export default function App() {
       const tryRestore = () => {
         const el = document.querySelector(`.reader-body [data-p="${target}"]`);
         if (el) {
-          flashParagraph(target, { scroll: target > 0, keepMs: 6000 });
+          if (target > 0) flashParagraph(target, { scroll: true, keepMs: 6000 });
           setActiveParaIndex(target);
         } else if (attempts < 6) {
           // Images/fonts can still be settling; retry briefly
@@ -1289,6 +1291,9 @@ export default function App() {
         setHeaderVisible(st < lastScrollTopRef.current || st < 60);
         lastScrollTopRef.current = st;
       }
+
+      const ne = sh - st < 300;
+      if (ne !== nearEndRef.current) { nearEndRef.current = ne; setNearEnd(ne); }
 
       // Debounce saving progress to cloud
       clearTimeout(scrollTimeoutRef.current);
@@ -1762,7 +1767,7 @@ export default function App() {
                   { key: 'focus', title: 'Ghim sáng dòng đang đọc (H)', icon: <XhIcon name="moon" />, onClick: () => toggleFocusLine(), on: focusParaIndex >= 0 },
                   { key: 'flag', title: isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)', icon: <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />, onClick: toggleBookmark, on: isCurrentParaBookmarked },
                   { key: 'bookmarks', title: 'Danh sách cờ đã cắm (M)', icon: <XhIcon name="talisman" />, onClick: () => setShowBookmarks(true) },
-                  { key: 'shortcuts', title: 'Phím tắt (?)', icon: <Keyboard size={19} />, onClick: () => setShowShortcuts(true) },
+                  { key: 'shortcuts', title: 'Phím tắt (?)', icon: <Keyboard size={19} />, onClick: () => setShowShortcuts(true), cls: 'tb-hide-phone' },
                   { key: 'download', title: 'Tải file EPUB về máy', icon: <Download size={19} />, onClick: (e) => handleDownloadBook(currentBook, e) },
                   { key: 'edit', title: 'Sửa nội dung chương (E)', icon: <Edit3 size={19} />, onClick: openChapterEditor },
                   { key: 'fullscreen', title: 'Toàn màn hình', icon: isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />, onClick: toggleFullscreen },
@@ -1802,7 +1807,7 @@ export default function App() {
                             <button
                               key={a.key}
                               role="menuitem"
-                              className={`tb-menu-item ${a.on ? 'flag-on' : ''}`}
+                              className={`tb-menu-item ${a.cls || ''} ${a.on ? 'flag-on' : ''}`}
                               onClick={(e) => { setShowMoreMenu(false); a.onClick(e); }}
                             >
                               {a.icon}
@@ -1855,7 +1860,7 @@ export default function App() {
             </article>
           </main>
 
-          <nav className="reader-pill" aria-label="Điều hướng chương">
+          <nav className={`reader-pill ${(!headerVisible && !nearEnd) ? 'pill-away' : ''}`} aria-label="Điều hướng chương">
             <button
               className="pill-btn pill-text"
               aria-label="Chương trước"

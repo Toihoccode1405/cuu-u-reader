@@ -107,9 +107,15 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
 
-    // Thanh nổi vẫn còn khi cuộn
+    // Thanh nổi vẫn còn khi cuộn (riêng điện thoại thì ẩn cùng thanh đầu khi cuộn xuống, xem phone.spec.js)
+    await page.waitForTimeout(2800);
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.waitForTimeout(250);
     await page.evaluate(() => window.scrollTo(0, 900));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
+    if (name !== 'phone') await expect(nav).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(400);
     await expect(nav).toBeVisible();
 
     // n / tổng mở mục lục
