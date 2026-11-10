@@ -67,17 +67,17 @@ test('Tu vi: người đọc mới thấy Ngưng Khí tầng 1 ở thư các', a
 test('Tu vi: đọc một chương thì tu vi tăng và hiện "Đột phá!" khi lên tầng', async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await registerViaApi(page, baseURL);
-  // Hai chương đã đọc (1600 từ, còn thiếu 67 từ tới tầng 2), đang đọc chương 3 có 200 từ
-  const bookId = await uploadViaApi(page, baseURL, 'Sach Tu Vi', [800, 800, 200]);
+  // Hai chương đã đọc (3266 từ, còn thiếu 67 từ tới tầng 2 ở mốc 3334), đang đọc chương 3 có 200 từ
+  const bookId = await uploadViaApi(page, baseURL, 'Sach Tu Vi', [1633, 1633, 200]);
   await setProgress(page, baseURL, bookId, 3);
 
-  await page.goto('/'); // lần mở đầu tiên cộng hồi tố 1600 từ
+  await page.goto('/'); // lần mở đầu tiên cộng hồi tố 3266 từ
   await expect(page.getByTestId('cultivation-chip')).toContainText('tầng 1');
   await page.getByRole('heading', { name: 'Sach Tu Vi', level: 4 }).click();
   await expect(page.locator('.reader-body')).toContainText('tu tu tu', { timeout: 20_000 });
 
   await expect(page.getByRole('status').filter({ hasText: 'Đột phá' })).toBeVisible({ timeout: 40_000 });
-  expect(await tuVi(page)).toBeGreaterThanOrEqual(1667);
+  expect(await tuVi(page)).toBeGreaterThanOrEqual(3334);
   await page.getByRole('button', { name: /Về thư các|Thư Các|Quay lại/ }).first().click().catch(() => {});
 });
 

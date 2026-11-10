@@ -7,7 +7,10 @@ export const BUOC_NAMES = {
   3: 'Tam bộ vô biên',
 };
 
-export const REALMS = [
+// Hệ số độ khó: nhân mọi mốc cảnh giới. Bảng dưới là mốc gốc (đọc ~1 năm là gần đầy), hệ số 2 làm đột phá khó gấp đôi.
+export const TU_VI_SCALE = 2;
+
+const BASE_REALMS = [
   { name: 'Ngưng Khí', buoc: 1, tangs: 9, from: 0 },
   { name: 'Trúc Cơ', buoc: 1, tangs: 9, from: 15_000 },
   { name: 'Kết Đan', buoc: 1, tangs: 9, from: 50_000 },
@@ -28,8 +31,10 @@ export const REALMS = [
   { name: 'Không Kiếp', buoc: 3, tangs: 9, from: 5_610_000 },
 ];
 
+export const REALMS = BASE_REALMS.map((r) => ({ ...r, from: r.from * TU_VI_SCALE }));
+
 // Tu vi tối đa: hết tầng cuối của cảnh giới cuối cùng
-export const MAX_TU_VI = 6_145_000;
+export const MAX_TU_VI = 6_145_000 * TU_VI_SCALE;
 
 // Tốc độ đọc tối đa được tính (từ/giây = 1200 từ/phút) và thời gian tối đa của một lần báo
 export const MAX_WORDS_PER_SECOND = 20;

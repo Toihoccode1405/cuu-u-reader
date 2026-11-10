@@ -123,21 +123,21 @@ describe('S6 - Cảnh giới và đột phá', () => {
   }
 
   it('còn thiếu 1000 từ tới Trúc Cơ thì vẫn ở Ngưng Khí tầng 9, đủ mốc thì đột phá sang Trúc Cơ tầng 1', async () => {
-    const { token, book } = await bookWith(Array(16).fill(1000));
-    const before = await readOneParagraphTimes(token, book.id, 14); // 14.000 từ
-    expect(before).toMatchObject({ tu_vi: 14000, realm: { name: 'Ngưng Khí', tang: 9 } });
+    const { token, book } = await bookWith(Array(32).fill(1000));
+    const before = await readOneParagraphTimes(token, book.id, 29); // 29.000 từ (mốc Trúc Cơ là 30.000)
+    expect(before).toMatchObject({ tu_vi: 29000, realm: { name: 'Ngưng Khí', tang: 9 } });
 
-    const res = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 14, to_para: 14, seconds: 60 })).json();
-    expect(res).toMatchObject({ tu_vi: 15000, breakthrough: true, realm: { name: 'Trúc Cơ', tang: 1, buoc: 1 } });
+    const res = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 29, to_para: 29, seconds: 60 })).json();
+    expect(res).toMatchObject({ tu_vi: 30000, breakthrough: true, realm: { name: 'Trúc Cơ', tang: 1, buoc: 1 } });
   });
 
   it('lên tầng trong cùng cảnh giới cũng là đột phá', async () => {
-    const { token, book } = await bookWith(Array(4).fill(1000));
-    // Ngưng Khí 0..15000 chia 9 tầng, mỗi tầng ~1666,7 từ: 1000 từ vẫn tầng 1, 2000 từ lên tầng 2
-    const first = await readOneParagraphTimes(token, book.id, 1);
-    expect(first).toMatchObject({ breakthrough: false, realm: { name: 'Ngưng Khí', tang: 1 } });
-    const second = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 1, to_para: 1, seconds: 60 })).json();
-    expect(second).toMatchObject({ tu_vi: 2000, breakthrough: true, realm: { name: 'Ngưng Khí', tang: 2 } });
+    const { token, book } = await bookWith(Array(5).fill(1000));
+    // Ngưng Khí 0..30000 chia 9 tầng, mỗi tầng ~3333,3 từ: 3000 từ vẫn tầng 1, 4000 từ lên tầng 2
+    const first = await readOneParagraphTimes(token, book.id, 3);
+    expect(first).toMatchObject({ tu_vi: 3000, breakthrough: false, realm: { name: 'Ngưng Khí', tang: 1 } });
+    const second = await (await report(token, { book_id: book.id, chapter_index: 1, from_para: 3, to_para: 3, seconds: 60 })).json();
+    expect(second).toMatchObject({ tu_vi: 4000, breakthrough: true, realm: { name: 'Ngưng Khí', tang: 2 } });
   });
 });
 
@@ -219,15 +219,15 @@ describe('S6c - Cộng hồi tố từ tiến độ đọc có sẵn', () => {
     expect(await (await backfill(token)).json()).toMatchObject({ gained: 0, tu_vi: 0 });
   });
 
-  it('tính đúng cảnh giới, tầng và Bước ở mốc xa (3,25 triệu từ là Thiên Nhân Suy Kiếp tầng 3 của Bước thứ hai)', async () => {
+  it('tính đúng cảnh giới, tầng và Bước ở mốc xa (6,5 triệu từ là Thiên Nhân Suy Kiếp tầng 3 của Bước thứ hai)', async () => {
     const big = Array(250_000).fill('a').join(' ');
     const user = await registerUser();
-    const chapters = Array.from({ length: 14 }, () => big);
+    const chapters = Array.from({ length: 27 }, () => big);
     const { book } = await uploadBook(user.token, await buildEpub({ chapters }));
-    await setProgress(user.token, book.id, 14); // 13 chương trước đó x 250.000 từ
+    await setProgress(user.token, book.id, 27); // 26 chương trước đó x 250.000 từ
     const res = await (await backfill(user.token)).json();
     expect(res).toMatchObject({
-      tu_vi: 3_250_000,
+      tu_vi: 6_500_000,
       realm: { name: 'Thiên Nhân Suy Kiếp', tang: 3, tangs: 5, buoc: 2 },
     });
   }, 60_000);

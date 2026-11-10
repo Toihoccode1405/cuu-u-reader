@@ -11,22 +11,23 @@
   - Số giây bị chặn bởi thời gian thật trôi qua từ lần báo trước, và tối đa 120 giây mỗi lần.
   - Lần báo đầu tiên được tính tối đa 120 giây.
 - Đoạn = khối `<p>` có từ 2 ký tự trở lên (cùng quy tắc đánh số `data-p` của giao diện). Đoạn ngoài phạm vi bị bỏ qua.
-- Tu vi tối đa 6.145.000 (hết tầng cuối của Không Kiếp).
+- Tu vi tối đa 12.290.000 (hết tầng cuối của Không Kiếp).
+- Độ khó: mọi mốc cảnh giới nhân với `TU_VI_SCALE` (hiện là 2, đặt ngày 2026-11-10 theo yêu cầu "đột phá khó gấp đôi"). Bảng gốc ở `shared/cultivation.js` giữ nguyên, chỉ đổi hệ số này. Tu vi người dùng đã tích không bị reset, nên cảnh giới hiển thị có thể thấp hơn trước.
 - Cảnh giới và tầng suy ra từ tu vi; mỗi cảnh giới chia đều theo tầng (9 tầng, riêng Thiên Nhân Suy Kiếp 5 tầng). Bảng mốc ở `shared/cultivation.js`, một hệ số chỉnh được ở một nơi.
 - Đột phá = lên tầng hoặc cảnh giới mới sau một lần báo.
 - Công tắc: tắt chỉ ẩn giao diện, máy chủ vẫn ghi, bật lại không mất gì.
 - Cộng hồi tố một lần duy nhất: các chương đứng trước chương đang đọc của mọi sách. Chương đã tách thì đếm thật; chương chưa tách chỉ tách thêm tối đa 40 chương mỗi lần, phần còn lại ước lượng theo số từ trung bình của sách đó (đo cho thấy tách 299 chương trong một lần mất ~19 giây, quá rủi ro trên Worker).
 
-## Mốc cảnh giới (từ)
+## Mốc cảnh giới (từ, đã nhân hệ số 2)
 | Bước | Cảnh giới | Mốc |
 |---|---|---|
-| 1 | Ngưng Khí / Trúc Cơ / Kết Đan / Nguyên Anh / Hóa Thần / Anh Biến / Vấn Đỉnh | 0 / 15k / 50k / 110k / 210k / 360k / 570k |
-| 1 | Âm Hư, Dương Thực (quá độ) | 850k / 1,2tr |
-| 2 | Khuy Niết / Tịnh Niết / Toái Niết | 1,61tr / 2,06tr / 2,535tr |
-| 2 | Thiên Nhân Suy Kiếp (5 tầng, quá độ) | 3,025tr |
-| 3 | Không Niết / Không Linh / Không Huyền / Huyền Kiếp / Không Kiếp | 3,525tr / 4,035tr / 4,555tr / 5,08tr / 5,61tr |
+| 1 | Ngưng Khí / Trúc Cơ / Kết Đan / Nguyên Anh / Hóa Thần / Anh Biến / Vấn Đỉnh | 0 / 30k / 100k / 220k / 420k / 720k / 1,14tr |
+| 1 | Âm Hư, Dương Thực (quá độ) | 1,7tr / 2,4tr |
+| 2 | Khuy Niết / Tịnh Niết / Toái Niết | 3,22tr / 4,12tr / 5,07tr |
+| 2 | Thiên Nhân Suy Kiếp (5 tầng, quá độ) | 6,05tr |
+| 3 | Không Niết / Không Linh / Không Huyền / Huyền Kiếp / Không Kiếp | 7,05tr / 8,07tr / 9,11tr / 10,16tr / 11,22tr |
 
-Với 2 giờ đọc mỗi ngày (~13 triệu từ/năm) thì đầy trong khoảng 5-6 tháng.
+Với 2 giờ đọc mỗi ngày (~13 triệu từ/năm) thì đầy trong khoảng 11-12 tháng.
 
 ## API
 - `GET /api/cultivation` -> `{ tu_vi, enabled, realm: { name, alias, buoc, buoc_name, qua_do, tang, tangs, progress, max } }`
