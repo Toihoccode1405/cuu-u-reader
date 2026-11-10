@@ -159,3 +159,18 @@ test('Icon cảnh giới: chip có icon đúng bậc, bấm chip mở bảng đ�
   await expect(dialog).toHaveCount(0);
   expect(problems).toEqual([]);
 });
+
+test('Tu vi: ngồi yên trên một màn hình không bị cộng lặp mỗi 10 giây', async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await registerViaApi(page, baseURL);
+  // Một đoạn 300 từ nằm trọn trên màn hình
+  await uploadViaApi(page, baseURL, 'Sach Ngoi Yen', [300]);
+  await page.goto('/');
+  await page.getByRole('heading', { name: 'Sach Ngoi Yen', level: 4 }).click();
+  await expect(page.locator('.reader-body')).toContainText('tu tu tu', { timeout: 20_000 });
+
+  await page.waitForTimeout(40_000); // ngồi yên 40 giây: chỉ được tính đúng một lần 300 từ
+  const gained = await tuVi(page);
+  expect(gained).toBeGreaterThan(0);
+  expect(gained).toBeLessThanOrEqual(300);
+});

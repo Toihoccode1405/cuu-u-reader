@@ -40,7 +40,9 @@ Với 2 giờ đọc mỗi ngày (~13 triệu từ/năm) thì đầy trong kho�
 
 ## Giao diện
 - Thư các: chip "Cảnh giới · tầng N" kèm thanh tiến độ tầng; di chuột xem Bước và tu vi. Bấm công tắc "Hệ thống tu tiên" trong cài đặt khi đọc để ẩn/hiện.
-- Khi đọc: mỗi giây ghi nhận các đoạn đang hiện trên màn hình (chỉ khi trang đang hiển thị); cứ 10 giây, hoặc khi đổi chương hoặc ẩn trang, gửi một báo cáo.
+- Khi đọc: mỗi giây ghi nhận các đoạn đang hiện trên màn hình (chỉ khi trang đang hiển thị). Chỉ đoạn **mới** hiện ra trong lần mở chương này mới được báo, nên ngồi yên trên một màn hình không bị cộng lặp. Một đoạn chỉ được báo khi thời gian đã đọc đủ cho số từ của nó ở tốc độ tối đa (20 từ/giây); kiểm tra mỗi 10 giây, và khi đổi chương hoặc ẩn trang thì báo nốt phần đã đủ thời gian.
+- Sự cố đã sửa (2026-11-10): bản đầu báo lại toàn bộ đoạn đang hiện trên màn hình mỗi 10 giây nên đọc 5-10 phút bị tính ở mức trần 1200 từ/phút (lên Ngưng Khí tầng 5). Test E2E "ngồi yên" bảo vệ lỗi này (trước khi sửa: 799 tu vi cho đoạn 300 từ trong 40 giây).
+- Đọc lại chương ở lần mở khác vẫn được cộng; trong cùng một lần mở chương, đoạn đã báo không được báo lại.
 - Lên tầng hoặc cảnh giới: hiện "Đột phá!" 5 giây (chỉ khi hệ thống đang bật).
 - Mất mạng: báo cáo xếp vào hàng đợi trong localStorage (tối đa 200), gửi bù theo thứ tự khi có mạng. Mỗi báo cáo mang `at` (thời điểm thật lúc đọc); máy chủ chặn `at` không vượt hiện tại và không lùi trước lần báo trước, nên tổng tu vi vẫn bị giới hạn bởi thời gian thật.
 - Đăng xuất xóa hàng đợi.

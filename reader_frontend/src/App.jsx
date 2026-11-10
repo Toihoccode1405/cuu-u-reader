@@ -309,53 +309,74 @@ export default function App() {
     return () => { window.removeEventListener('online', retry); clearInterval(id); };
   }, [cloudUser?.id, applyReports]);
 
-  // Theo dõi đoạn đang hiện trên màn hình mỗi giây và báo cho máy chủ mỗi 10 giây (hoặc khi đổi chương/ẩn trang)
+  // Theo dõi việc đọc: mỗi giây ghi nhận các đoạn đang hiện trên màn hình.
+  // Chỉ đoạn MỚI hiện ra trong lần mở chương này mới được báo (ngồi yên trên một màn hình không được cộng lặp),
+  // và chỉ báo khi thời gian đã trôi qua đủ để đọc hết số từ đó ở tốc độ tối đa được tính.
   const readingBookId = currentBook?.record?.id;
   const readingChapter = currentChapter?.chapter_index;
   useEffect(() => {
     if (view !== 'reader' || !readingBookId || !readingChapter) return;
-    const acc = { from: Infinity, to: -1, seconds: 0 };
-    const flush = () => {
-      if (acc.seconds >= 1 && acc.to >= acc.from) {
-        const report = {
-          book_id: readingBookId,
-          chapter_index: readingChapter,
-          from_para: acc.from,
-          to_para: acc.to,
-          seconds: acc.seconds,
-          at: Date.now(),
-        };
-        submitReading(report).then(applyReports);
+    const WORDS_PER_SECOND = 20; // phải khớp MAX_WORDS_PER_SECOND của máy chủ
+    const MAX_BANK = 120;
+    const reported = new Set(); // đoạn đã báo trong lần mở chương này
+    const pending = new Map(); // đoạn đã thấy nhưng chưa báo: chỉ số -> số từ
+    let bank = 0; // số giây đã đọc (trang hiển thị và có đoạn trên màn hình) kể từ lần báo trước
+
+    const flush = (force) => {
+      if (bank < 1 || pending.size === 0) return;
+      const budget = Math.floor(bank * WORDS_PER_SECOND);
+      const sorted = [...pending.keys()].sort((x, y) => x - y);
+      // Lấy đoạn liền nhau đầu tiên, nhiều tới mức số từ còn nằm trong thời gian đã đọc
+      let words = 0;
+      const run = [];
+      for (const i of sorted) {
+        if (run.length && i !== run[run.length - 1] + 1) break;
+        const w = pending.get(i);
+        if (words + w > budget && run.length) break;
+        if (words + w > budget && !run.length && !(force || bank >= MAX_BANK)) return; // chưa đủ thời gian đọc, đợi thêm
+        run.push(i);
+        words += w;
+        if (words >= budget) break;
       }
-      acc.from = Infinity; acc.to = -1; acc.seconds = 0;
+      if (!run.length) return;
+      submitReading({
+        book_id: readingBookId,
+        chapter_index: readingChapter,
+        from_para: run[0],
+        to_para: run[run.length - 1],
+        seconds: Math.min(bank, MAX_BANK),
+        at: Date.now(),
+      }).then(applyReports);
+      run.forEach((i) => { reported.add(i); pending.delete(i); });
+      bank = 0;
     };
+
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
-      const blocks = document.querySelectorAll('.reader-body [data-p]');
       let seen = false;
-      blocks.forEach((el) => {
+      document.querySelectorAll('.reader-body [data-p]').forEach((el) => {
         const r = el.getBoundingClientRect();
         if (r.bottom > 0 && r.top < window.innerHeight) {
+          seen = true;
           const i = Number(el.getAttribute('data-p'));
-          if (Number.isInteger(i)) {
-            acc.from = Math.min(acc.from, i);
-            acc.to = Math.max(acc.to, i);
-            seen = true;
+          if (Number.isInteger(i) && !reported.has(i) && !pending.has(i)) {
+            pending.set(i, (el.textContent || '').trim().split(/\s+/).filter(Boolean).length);
           }
         }
       });
-      if (seen) acc.seconds += 1;
-      if (acc.seconds >= 10) flush();
+      if (seen) bank = Math.min(MAX_BANK, bank + 1);
+      if (bank >= 10) flush(false);
     };
-    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(true); };
+    const onPageHide = () => flush(true);
     const id = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', onHide);
-    window.addEventListener('pagehide', flush);
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onHide);
-      window.removeEventListener('pagehide', flush);
-      flush();
+      window.removeEventListener('pagehide', onPageHide);
+      flush(true);
     };
   }, [view, readingBookId, readingChapter, applyReports]);
 
