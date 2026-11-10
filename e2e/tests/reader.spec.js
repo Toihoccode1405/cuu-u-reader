@@ -29,7 +29,7 @@ test('đăng ký, đưa sách lên, đọc chương, đăng xuất', async ({ pa
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong mot', { timeout: 20_000 });
 
   // Sang chương kế bằng nút chuyển chương
-  await page.getByTitle(/Chương sau|Chương kế|Chương tiếp/).first().click();
+  await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: 'Chương sau', exact: true }).click();
   await expect(page.locator('.reader-body')).toContainText('Noi dung chuong hai', { timeout: 20_000 });
 
   // Không có lỗi console hay lỗi CSP suốt luồng

@@ -14,6 +14,10 @@ import RealmPath from './RealmPath';
 import { fetchCultivation, runBackfill, setCultivationEnabled, submitReading, flushReportQueue, hasQueuedReports, clearReportQueue } from './cultivation';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
+const resolveTheme = (t) => (t === 'auto'
+  ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'slate' : 'white')
+  : t);
+
 // "Chương 12: Tên chương" -> { n: 12, title: 'Tên chương' }; tên không theo mẫu thì dùng số thứ tự và giữ nguyên tên
 function splitChapterTitle(raw, fallbackIndex) {
   const t = String(raw || '').trim();
@@ -70,7 +74,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         // Legacy theme ids -> ids actually defined in the stylesheet
-        const themeMap = { paper: 'white', dark: 'slate' };
+        const themeMap = { paper: 'white', dark: 'slate', oled: 'slate', jade: 'white', ink: 'white' };
         if (themeMap[parsed.theme]) parsed.theme = themeMap[parsed.theme];
         if (parsed.font === 'font-vietnam') parsed.font = 'font-be-vietnam';
         if (parsed.letterSpacing === undefined) parsed.letterSpacing = 0;
@@ -91,7 +95,7 @@ export default function App() {
     }
     return {
       uiv: 2,
-      theme: 'sepia',
+      theme: 'auto',
       font: 'font-literata',
       fontSize: 20,
       lineHeight: 1.8,
@@ -184,9 +188,18 @@ export default function App() {
     return r.top >= topLimit && r.bottom <= bottomLimit;
   }, []);
 
+  // "Theo giao diện": đi theo chế độ sáng/tối của hệ điều hành, đổi ngay khi hệ điều hành đổi
+  useEffect(() => {
+    if (settings.theme !== 'auto') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => document.documentElement.setAttribute('data-theme', resolveTheme('auto'));
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [settings.theme]);
+
   // Sync settings with DOM & localStorage & Cloudflare D1
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', settings.theme);
+    document.documentElement.setAttribute('data-theme', resolveTheme(settings.theme));
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
     document.documentElement.style.setProperty('--reader-line-height', settings.lineHeight);
     document.documentElement.style.setProperty('--reader-letter-spacing', `${settings.letterSpacing}px`);
@@ -242,7 +255,7 @@ export default function App() {
       if (settingsRes.ok) {
         const { settings: cloudSettings } = await settingsRes.json();
         if (cloudSettings && typeof cloudSettings === 'object' && Object.keys(cloudSettings).length > 0) {
-          const themeMap = { paper: 'white', dark: 'slate' };
+          const themeMap = { paper: 'white', dark: 'slate', oled: 'slate', jade: 'white', ink: 'white' };
           if (themeMap[cloudSettings.theme]) cloudSettings.theme = themeMap[cloudSettings.theme];
           if (cloudSettings.font === 'font-vietnam') cloudSettings.font = 'font-be-vietnam';
           lastSavedSettingsRef.current = JSON.stringify(cloudSettings);
@@ -1699,58 +1712,55 @@ export default function App() {
             <div className="reader-header-inner">
               <button
                 className="btn btn-icon"
+                aria-label="Quay lại Thư viện"
+                title="Quay lại Thư viện"
                 onClick={() => {
                   setView('library');
                   loadUserData();
                 }}
-                title="Quay lại Thư viện"
               >
                 <ArrowLeft size={20} />
               </button>
 
               <div className="reader-title-truncate">
-                <span className="brand-seal" style={{ width: 24, height: 24, marginRight: 8 }}>
-                  <XhIcon name="sword" />
-                </span>
                 <strong className="header-book-title">{currentBook.record ? currentBook.record.title : currentBook.title}</strong>
-                <span className="header-sep hide-on-mobile" style={{ margin: '0 8px', opacity: 0.5 }}>•</span>
-                <span className="header-chapter-title" style={{ fontSize: '0.82rem', opacity: 0.85 }}>{currentChapter.title}</span>
               </div>
 
               {(() => {
-                // inline: bậc màn hình nhỏ nhất mà nút nằm trên thanh (phone < tablet < desktop)
-                // menu: nút nằm trong menu "⋯" ở những màn hình nào (upto-tablet: điện thoại + máy tính bảng)
+                // Mọi chức năng phụ nằm trong menu ⋯ (kể cả máy tính), giữ phím tắt như cũ
                 const actions = [
-                  { key: 'prev', title: 'Chương trước (←)', icon: <ChevronLeft size={19} />, onClick: () => shortcutsRef.current.prevChapter(), inline: 'tablet', disabled: !currentChapter.prev_index },
-                  { key: 'next', title: 'Chương tiếp theo (→)', icon: <ChevronRight size={19} />, onClick: () => shortcutsRef.current.nextChapter(), inline: 'tablet', disabled: !currentChapter.next_index },
-                  { key: 'focus', title: 'Ghim sáng dòng đang đọc (H)', icon: <XhIcon name="moon" />, onClick: () => toggleFocusLine(), inline: 'desktop', menu: 'upto-tablet', on: focusParaIndex >= 0 },
-                  { key: 'flag', title: isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)', icon: <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />, onClick: toggleBookmark, inline: 'phone', on: isCurrentParaBookmarked },
-                  { key: 'bookmarks', title: 'Danh sách cờ đã cắm (M)', icon: <XhIcon name="talisman" />, onClick: () => setShowBookmarks(true), inline: 'desktop', menu: 'upto-tablet' },
-                  { key: 'toc', title: 'Mục lục chương (C)', icon: <XhIcon name="scroll" />, onClick: () => setShowTOC(true), inline: 'phone' },
-                  { key: 'settings', title: 'Cài đặt giao diện (S)', icon: <XhIcon name="jade" />, onClick: () => setShowSettings(true), inline: 'phone' },
-                  { key: 'shortcuts', title: 'Phím tắt (?)', icon: <Keyboard size={19} />, onClick: () => setShowShortcuts(true), inline: 'desktop' },
-                  { key: 'download', title: 'Tải file EPUB về máy', icon: <Download size={19} />, onClick: (e) => handleDownloadBook(currentBook, e), inline: 'desktop', menu: 'upto-tablet' },
-                  { key: 'edit', title: 'Sửa nội dung chương (E)', icon: <Edit3 size={19} />, onClick: openChapterEditor, inline: 'desktop', menu: 'upto-tablet' },
-                  { key: 'fullscreen', title: 'Toàn màn hình', icon: isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />, onClick: toggleFullscreen, inline: 'desktop', menu: 'tablet-only' },
+                  { key: 'focus', title: 'Ghim sáng dòng đang đọc (H)', icon: <XhIcon name="moon" />, onClick: () => toggleFocusLine(), on: focusParaIndex >= 0 },
+                  { key: 'flag', title: isCurrentParaBookmarked ? 'Bỏ cờ tại dòng này (F)' : 'Cắm cờ tại dòng đang đọc (F)', icon: <Flag size={18} fill={isCurrentParaBookmarked ? 'currentColor' : 'none'} />, onClick: toggleBookmark, on: isCurrentParaBookmarked },
+                  { key: 'bookmarks', title: 'Danh sách cờ đã cắm (M)', icon: <XhIcon name="talisman" />, onClick: () => setShowBookmarks(true) },
+                  { key: 'shortcuts', title: 'Phím tắt (?)', icon: <Keyboard size={19} />, onClick: () => setShowShortcuts(true) },
+                  { key: 'download', title: 'Tải file EPUB về máy', icon: <Download size={19} />, onClick: (e) => handleDownloadBook(currentBook, e) },
+                  { key: 'edit', title: 'Sửa nội dung chương (E)', icon: <Edit3 size={19} />, onClick: openChapterEditor },
+                  { key: 'fullscreen', title: 'Toàn màn hình', icon: isFullscreen ? <Minimize size={19} /> : <Maximize size={19} />, onClick: toggleFullscreen },
                 ];
                 return (
                   <div className="tb-actions">
-                    {actions.map((a) => (
-                      <button
-                        key={a.key}
-                        className={`btn btn-icon tb-from-${a.inline} ${a.on ? 'flag-on' : ''}`}
-                        disabled={a.disabled}
-                        onClick={a.onClick}
-                        title={a.title}
-                      >
-                        {a.icon}
-                      </button>
-                    ))}
+                    <button
+                      className="btn btn-icon toc-btn"
+                      aria-label="Mục lục chương (C)"
+                      title="Mục lục chương (C)"
+                      onClick={() => setShowTOC(true)}
+                    >
+                      <List size={20} /><span className="toc-label">Chương {chapterIndex}</span>
+                    </button>
+                    <button
+                      className="btn btn-icon aa-btn"
+                      aria-label="Cài đặt giao diện (S)"
+                      title="Cài đặt giao diện (S)"
+                      onClick={() => setShowSettings(true)}
+                    >
+                      Aa
+                    </button>
                     <div className="tb-more-wrap">
                       <button
                         className="btn btn-icon tb-more"
                         aria-haspopup="menu"
                         aria-expanded={showMoreMenu}
+                        aria-label="Thêm chức năng"
                         onClick={() => setShowMoreMenu(v => !v)}
                         title="Thêm chức năng"
                       >
@@ -1758,11 +1768,11 @@ export default function App() {
                       </button>
                       {showMoreMenu && (
                         <div className="tb-menu" role="menu" aria-label="Thêm chức năng">
-                          {actions.filter((a) => a.menu).map((a) => (
+                          {actions.map((a) => (
                             <button
                               key={a.key}
                               role="menuitem"
-                              className={`tb-menu-item tbm-${a.menu} ${a.on ? 'flag-on' : ''}`}
+                              className={`tb-menu-item ${a.on ? 'flag-on' : ''}`}
                               onClick={(e) => { setShowMoreMenu(false); a.onClick(e); }}
                             >
                               {a.icon}
@@ -1776,6 +1786,7 @@ export default function App() {
                 );
               })()}
             </div>
+            <div className="header-progress" style={{ transform: `scaleX(${Math.min(1, Math.max(0, scrollProgress / 100))})` }} />
           </header>
           {!headerVisible && (
             <button
@@ -1890,20 +1901,21 @@ export default function App() {
                 <label className="settings-label">Màu Nền / Chủ Đề</label>
                 <div className="theme-options">
                   {[
-                    { id: 'white', cls: 'theme-paper', name: 'Bạch Ngọc' },
-                    { id: 'sepia', cls: 'theme-sepia', name: 'Hoàng Ngọc' },
-                    { id: 'slate', cls: 'theme-dark', name: 'Huyền Thiết' },
-                    { id: 'oled', cls: 'theme-oled', name: 'U Minh' },
-                    { id: 'jade', cls: 'theme-jade', name: 'Thanh Liên' },
-                    { id: 'ink', cls: 'theme-ink', name: 'Mặc Họa' }
+                    { id: 'auto', name: 'Theo giao diện' },
+                    { id: 'white', name: 'Sáng' },
+                    { id: 'sepia', name: 'Sepia' },
+                    { id: 'slate', name: 'Tối' }
                   ].map(t => (
-                    <div
+                    <button
+                      type="button"
                       key={t.id}
-                      className={`theme-badge ${t.cls} ${settings.theme === t.id ? 'active' : ''}`}
-                      onClick={() => setSettings(s => ({ ...s, theme: t.id }))}
+                      aria-pressed={settings.theme === t.id}
+                      className={`theme-swatch-btn ${settings.theme === t.id ? 'active' : ''}`}
+                      onClick={() => setSettings(st => ({ ...st, theme: t.id }))}
                     >
-                      {t.name}
-                    </div>
+                      <span className={`swatch swatch-${t.id}`} />
+                      <span className="swatch-name">{t.name}</span>
+                    </button>
                   ))}
                 </div>
 

@@ -16,109 +16,59 @@
   --scrollbar-track: transparent;
 }
 
-/* 1. Bạch Ngọc (Sáng - Ngọc trắng) */
+/* Ba bảng màu theo trang đọc mẫu: Sáng / Sepia / Tối ("Theo giao diện" chọn Sáng hoặc Tối theo hệ điều hành) */
 html[data-theme="white"] {
-  --bg-primary: #fbfaf7;
+  --bg-primary: #f5f5f4;
   --bg-surface: #ffffff;
-  --bg-secondary: #f1efe9;
-  --text-primary: #262119;
-  --text-secondary: #6b6459;
-  --border-color: #e2ddd1;
-  --accent-color: #8a6a2f;
-  --accent-hover: #6f5323;
-  --accent-light: rgba(138, 106, 47, 0.12);
-  --shadow-sm: 0 2px 8px rgba(38, 33, 25, 0.05);
-  --shadow-lg: 0 12px 32px rgba(38, 33, 25, 0.10);
-  --scrollbar-thumb: #cbb389;
+  --bg-secondary: #f0efed;
+  --text-primary: #18181b;
+  --text-secondary: #71717a;
+  --border-color: #e7e5e4;
+  --accent-color: #c94119;
+  --accent-hover: #a83514;
+  --accent-light: rgba(201, 65, 25, 0.12);
+  --header-bg: rgba(255, 255, 255, 0.95);
+  --shadow-sm: 0 2px 8px rgba(24, 24, 27, 0.05);
+  --shadow-lg: 0 12px 32px rgba(24, 24, 27, 0.10);
+  --scrollbar-thumb: #d6d3d1;
 }
 
-/* 2. Hoàng Ngọc (Ấm áp - Ngọc vàng) */
 html[data-theme="sepia"] {
-  --bg-primary: #f7f0dc;
-  --bg-surface: #efe4c9;
-  --bg-secondary: #e5d8b6;
-  --text-primary: #3b2f20;
-  --text-secondary: #6f5c42;
-  --border-color: #d8c7a0;
-  --accent-color: #9a6b16;
-  --accent-hover: #7c530f;
-  --accent-light: rgba(154, 107, 22, 0.14);
-  --shadow-sm: 0 2px 8px rgba(78, 59, 39, 0.07);
-  --shadow-lg: 0 12px 32px rgba(78, 59, 39, 0.13);
-  --scrollbar-thumb: #c2a266;
+  --bg-primary: #ece2c8;
+  --bg-surface: #f4ecd8;
+  --bg-secondary: #e8dcc0;
+  --text-primary: #433422;
+  --text-secondary: #705e46;
+  --border-color: #ded0b4;
+  --accent-color: #b53714;
+  --accent-hover: #96300f;
+  --accent-light: rgba(181, 55, 20, 0.14);
+  --header-bg: rgba(244, 236, 216, 0.95);
+  --shadow-sm: 0 2px 8px rgba(67, 52, 34, 0.07);
+  --shadow-lg: 0 12px 32px rgba(67, 52, 34, 0.13);
+  --scrollbar-thumb: #c9b88f;
 }
 
-/* 3. Huyền Thiết (Tối - Sắt đen) */
 html[data-theme="slate"] {
-  --bg-primary: #14161c;
-  --bg-surface: #1d212a;
-  --bg-secondary: #262b36;
-  --text-primary: #e6e2d6;
-  --text-secondary: #9aa1ad;
-  --border-color: #333947;
-  --accent-color: #c9a227;
-  --accent-hover: #dab63c;
-  --accent-light: rgba(201, 162, 39, 0.16);
+  --bg-primary: #0b0b0c;
+  --bg-surface: #161618;
+  --bg-secondary: #1f1f22;
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --border-color: #27272a;
+  --accent-color: #ff6b47;
+  --accent-hover: #ff8566;
+  --accent-light: rgba(255, 107, 71, 0.16);
+  --header-bg: rgba(22, 22, 24, 0.95);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
-  --scrollbar-thumb: #4a5162;
-}
-
-/* 4. U Minh (OLED - Đen tuyệt đối) */
-html[data-theme="oled"] {
-  --bg-primary: #000000;
-  --bg-surface: #0c0d11;
-  --bg-secondary: #15171d;
-  --text-primary: #d8d6ce;
-  --text-secondary: #7d8291;
-  --border-color: #22252d;
-  --accent-color: #b98a2c;
-  --accent-hover: #d3a13a;
-  --accent-light: rgba(185, 138, 44, 0.16);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.85);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.95);
-  --scrollbar-thumb: #2b2f3a;
-}
-
-/* 5. Thanh Liên (Xanh ngọc bích) */
-html[data-theme="jade"] {
-  --bg-primary: #eef5f1;
-  --bg-surface: #f8fdfb;
-  --bg-secondary: #dfece7;
-  --text-primary: #1c2b26;
-  --text-secondary: #556b64;
-  --border-color: #c6ded5;
-  --accent-color: #12695a;
-  --accent-hover: #0d544a;
-  --accent-light: rgba(18, 105, 90, 0.12);
-  --shadow-sm: 0 2px 8px rgba(20, 60, 50, 0.06);
-  --shadow-lg: 0 12px 32px rgba(20, 60, 50, 0.12);
-  --scrollbar-thumb: #9dc4b8;
-}
-
-/* 6. Mặc Họa (Giấy mực tàu) */
-html[data-theme="ink"] {
-  --bg-primary: #e9ebe7;
-  --bg-surface: #f4f5f2;
-  --bg-secondary: #dcdfd9;
-  --text-primary: #1b1d1c;
-  --text-secondary: #5d625f;
-  --border-color: #c8ccc5;
-  --accent-color: #33463f;
-  --accent-hover: #24332e;
-  --accent-light: rgba(51, 70, 63, 0.12);
-  --shadow-sm: 0 2px 8px rgba(27, 29, 28, 0.06);
-  --shadow-lg: 0 12px 32px rgba(27, 29, 28, 0.12);
-  --scrollbar-thumb: #a6aca4;
+  --scrollbar-thumb: #3f3f46;
 }
 
 /* Legacy aliases kept so any older reference still resolves */
 html[data-theme="white"],
 html[data-theme="sepia"],
-html[data-theme="slate"],
-html[data-theme="oled"],
-html[data-theme="jade"],
-html[data-theme="ink"] {
+html[data-theme="slate"] {
   --bg-color: var(--bg-primary);
   --bg-primary-old: var(--bg-primary);
   --card-bg: var(--bg-surface);
@@ -1147,12 +1097,6 @@ body {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 2px var(--accent-color);
 }
-.theme-badge.theme-paper { background: #fbfaf7; color: #262119; }
-.theme-badge.theme-sepia { background: #efe4c9; color: #3b2f20; }
-.theme-badge.theme-dark  { background: #1d212a; color: #e6e2d6; }
-.theme-badge.theme-oled  { background: #000000; color: #cfcfcf; }
-.theme-badge.theme-jade  { background: #dff0ea; color: #10453b; }
-.theme-badge.theme-ink   { background: #e9ebe7; color: #1b1d1c; }
 
 /* Hàng điều chỉnh dạng thanh trượt */
 .setting-range-row {
@@ -2577,7 +2521,7 @@ input[type="range"] {
    GIAO DIỆN ĐỌC KIỂU THẺ: đầu chương, drop cap, thanh nút nổi, tấm cài đặt trượt
    ============================================================================= */
 :root { --reader-accent: var(--accent-color); --reader-accent-fg: #fff; }
-html[data-theme="slate"], html[data-theme="oled"] { --reader-accent: #ff6b47; --reader-accent-fg: #1a0d08; }
+html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
 
 .reader-content-box {
   --page-pad: 1rem;
@@ -2709,3 +2653,73 @@ html[data-theme="slate"], html[data-theme="oled"] { --reader-accent: #ff6b47; --
     background: var(--border-color);
   }
 }
+
+/* =============================================================================
+   THANH ĐẦU KHI ĐỌC KIỂU TRANG MẪU: quay lại | tên truyện | Chương n | Aa | ⋯, tiến độ 2px ở đáy
+   ============================================================================= */
+:root { --reader-header-height: 56px; }
+.reader-header { --reader-header-height: 56px; }
+.reader-header {
+  background: var(--header-bg, var(--bg-surface));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+.reader-header-inner { width: 100%; max-width: 1172px; margin: 0 auto; gap: 0.5rem; }
+.reader-title-truncate { flex: 1 1 auto; min-width: 0; max-width: none; text-align: left; }
+.header-book-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.reader-header .btn-icon { width: auto; min-width: 40px; height: 40px; padding: 0 8px; border-radius: 9999px; }
+.reader-header .toc-btn { gap: 6px; }
+.toc-label { font-size: 0.875rem; }
+.aa-btn { font-family: 'Literata Variable', Georgia, serif; font-size: 1.125rem; }
+.tb-more-wrap { display: block; }
+.header-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--reader-accent);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+@media (min-width: 641px) {
+  .reader-header { padding-left: 1rem; padding-right: 1rem; }
+  .header-book-title { font-size: 1rem; }
+}
+@media (max-width: 640px) {
+  .toc-label { display: none; }
+  .reader-header .btn-icon { width: auto; height: 40px; }
+}
+
+/* Chọn nền: ô tròn màu kèm tên */
+.theme-options { grid-template-columns: repeat(4, 1fr); gap: 0.25rem; }
+.theme-swatch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--border-color); display: block; }
+.swatch-white { background: #ffffff; }
+.swatch-sepia { background: #f4ecd8; }
+.swatch-slate { background: #161618; }
+.swatch-auto { background: linear-gradient(90deg, #161618 50%, #ffffff 50%); }
+.theme-swatch-btn.active .swatch { border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color); }
+.theme-swatch-btn.active .swatch-name { color: var(--text-primary); font-weight: 600; }

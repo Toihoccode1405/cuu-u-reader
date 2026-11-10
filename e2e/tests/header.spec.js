@@ -41,11 +41,11 @@ async function openBook(page, baseURL, title) {
 
 const btn = (page, title) => page.getByRole('button', { name: title });
 
-const INLINE_ALWAYS = ['Cắm cờ tại dòng đang đọc (F)', 'Mục lục chương (C)', 'Cài đặt giao diện (S)'];
-const MENU_ITEMS_PHONE = ['Ghim sáng dòng đang đọc (H)', 'Danh sách cờ đã cắm (M)', 'Tải file EPUB về máy', 'Sửa nội dung chương (E)'];
+const INLINE_ALWAYS = ['Quay lại Thư viện', 'Mục lục chương (C)', 'Cài đặt giao diện (S)', 'Thêm chức năng'];
+const MENU_ITEMS = ['Ghim sáng dòng đang đọc (H)', 'Cắm cờ tại dòng đang đọc (F)', 'Danh sách cờ đã cắm (M)', 'Phím tắt (?)', 'Tải file EPUB về máy', 'Sửa nội dung chương (E)', 'Toàn màn hình'];
 
 for (const [name, size] of Object.entries(VIEWPORTS)) {
-  test(`Thanh công cụ (${name} ${size.width}px): không tràn ngang, nút chính bấm được, tên chương còn thấy`, async ({ page, baseURL }) => {
+  test(`Thanh công cụ (${name} ${size.width}px): gọn, tên truyện còn thấy, mọi chức năng nằm trong menu ⋯`, async ({ page, baseURL }) => {
     const problems = collectProblems(page);
     await page.setViewportSize(size);
     await openBook(page, baseURL, `Sach Header ${name}`);
@@ -55,38 +55,41 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
 
     const header = page.locator('.reader-header');
     const h = (await header.boundingBox()).height;
-    if (name === 'phone') expect(h).toBeLessThanOrEqual(48);
-    if (name === 'tablet') expect(h).toBeLessThanOrEqual(56);
+    expect(h).toBeLessThanOrEqual(60);
+    expect(h).toBeGreaterThanOrEqual(52);
 
-    for (const t of INLINE_ALWAYS) await expect(btn(page, t)).toBeVisible();
-    await expect(page.locator('.header-chapter-title')).toBeVisible();
-    const titleBox = await page.locator('.header-chapter-title').boundingBox();
-    expect(titleBox.width).toBeGreaterThanOrEqual(name === 'phone' ? 90 : 150);
+    for (const t of INLINE_ALWAYS) await expect(header.getByRole('button', { name: t })).toBeVisible();
+    // Chỉ còn 4 nút: quay lại, mục lục, Aa, ⋯
+    expect(await header.getByRole('button').count()).toBe(4);
 
-    // Mọi nút nằm trong màn hình
+    const title = header.locator('.header-book-title');
+    await expect(title).toBeVisible();
+    await expect(title).toHaveText(`Sach Header ${name}`);
+    expect((await title.boundingBox()).width).toBeGreaterThanOrEqual(name === 'phone' ? 100 : 200);
+
+    // Chữ "Chương n" cạnh nút mục lục chỉ hiện từ máy tính bảng
+    const toc = header.getByRole('button', { name: 'Mục lục chương (C)' });
+    if (name === 'phone') await expect(toc.locator('.toc-label')).toBeHidden();
+    else await expect(toc.locator('.toc-label')).toHaveText('Chương 1');
+
+    // Thanh tiến độ 2px dính đáy thanh
+    const bar = header.locator('.header-progress');
+    await expect(bar).toBeAttached();
+    expect((await bar.boundingBox()).height).toBeLessThanOrEqual(3);
+
     for (const b of await header.getByRole('button').all()) {
-      if (!(await b.isVisible())) continue;
       const box = await b.boundingBox();
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(size.width + 0.5);
     }
 
-    const more = btn(page, 'Thêm chức năng');
-    if (name === 'desktop') {
-      await expect(more).toHaveCount(0);
-      for (const t of [...MENU_ITEMS_PHONE, 'Phím tắt (?)', 'Toàn màn hình']) await expect(btn(page, t)).toBeVisible();
-    } else {
-      await expect(more).toBeVisible();
-      // Nút phụ không nằm ngoài thanh nữa mà nằm trong menu
-      for (const t of MENU_ITEMS_PHONE) await expect(header.getByRole('button', { name: t })).toHaveCount(0);
-      await more.click();
-      const menu = page.getByRole('menu', { name: 'Thêm chức năng' });
-      await expect(menu).toBeVisible();
-      for (const t of MENU_ITEMS_PHONE) await expect(menu.getByRole('menuitem', { name: t })).toBeVisible();
-      await menu.getByRole('menuitem', { name: 'Danh sách cờ đã cắm (M)' }).click();
-      await expect(page.locator('.drawer-overlay.open')).toHaveCount(1);
-      await expect(menu).toHaveCount(0); // bấm xong menu tự đóng
-    }
+    await header.getByRole('button', { name: 'Thêm chức năng' }).click();
+    const menu = page.getByRole('menu', { name: 'Thêm chức năng' });
+    await expect(menu).toBeVisible();
+    for (const t of MENU_ITEMS) await expect(menu.getByRole('menuitem', { name: t })).toBeVisible();
+    await menu.getByRole('menuitem', { name: 'Danh sách cờ đã cắm (M)' }).click();
+    await expect(page.locator('.drawer-overlay.open')).toHaveCount(1);
+    await expect(menu).toHaveCount(0);
     expect(problems).toEqual([]);
   });
 }
