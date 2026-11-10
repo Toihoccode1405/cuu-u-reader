@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import AuthPage from './AuthPage';
 import XhIcon, { XhSprite } from './XhIcon';
+import logoUrl from './assets/logo-tutien-96.png';
 import { getApiUrl } from './api';
 import { prepareChapters } from './chapterPrep';
 import RealmIcon from './RealmIcon';
@@ -1527,7 +1528,7 @@ export default function App() {
             <div className={`header-inner ${searchOpen ? 'search-open' : ''}`}>
               <div className="brand" onClick={() => loadUserData()}>
                 <span className="brand-seal">
-                  <XhIcon name="seal" />
+                  <img src={logoUrl} alt="" width="30" height="30" decoding="async" />
                 </span>
                 <span className="brand-text">Cửu U Thư Các</span>
               </div>

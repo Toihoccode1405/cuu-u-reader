@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BookOpen, User, Lock, ArrowRight, ShieldCheck, Cloud, Smartphone, Monitor } from 'lucide-react';
-import XhIcon from './XhIcon';
+import logoUrl from './assets/logo-tutien-160.png';
 import { apiFetch } from './api';
 
 export default function AuthPage({ onLoginSuccess }) {
@@ -60,7 +60,7 @@ export default function AuthPage({ onLoginSuccess }) {
         {/* Brand Header */}
         <div className="auth-index-brand">
           <div className="auth-brand-seal">
-            <XhIcon name="seal" />
+            <img src={logoUrl} alt="" width="64" height="64" decoding="async" />
           </div>
           <h1 className="auth-brand-title">Cửu U Thư Các</h1>
           <p className="auth-brand-subtitle">
