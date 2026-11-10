@@ -2572,3 +2572,140 @@ input[type="range"] {
     background: var(--border-color);
   }
 }
+
+/* =============================================================================
+   GIAO DIỆN ĐỌC KIỂU THẺ: đầu chương, drop cap, thanh nút nổi, tấm cài đặt trượt
+   ============================================================================= */
+:root { --reader-accent: var(--accent-color); --reader-accent-fg: #fff; }
+html[data-theme="slate"], html[data-theme="oled"] { --reader-accent: #ff6b47; --reader-accent-fg: #1a0d08; }
+
+.reader-content-box {
+  --page-pad: 1rem;
+  max-width: none;
+  padding: calc(var(--reader-header-height, 56px) + var(--safe-top) + 1.5rem) var(--page-pad) calc(7rem + var(--safe-bottom));
+}
+.reader-card {
+  box-sizing: border-box;
+  margin: 0 auto;
+  width: 100%;
+  max-width: min(var(--reader-max-width, 760px), 760px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 3.5rem;
+}
+.chapter-head { text-align: center; margin-bottom: 2.5rem; }
+.chapter-eyebrow {
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  color: var(--text-secondary);
+}
+.reader-card .chapter-head-title {
+  margin: 0.75rem 0 0;
+  font-family: 'Literata Variable', Georgia, serif;
+  font-size: 2.1em;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-primary);
+}
+.chapter-divider { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 1.25rem; }
+.chapter-divider span { display: block; height: 1px; width: 64px; background: var(--border-color); }
+.chapter-divider i { display: block; width: 6px; height: 6px; transform: rotate(45deg); background: var(--text-secondary); }
+.chapter-meta { margin-top: 1rem; font-family: 'Be Vietnam Pro', system-ui, sans-serif; font-size: 12px; color: var(--text-secondary); }
+
+.reader-body [data-p="0"]::first-letter {
+  float: left;
+  margin: 0.05em 0.12em 0 0;
+  font-family: 'Literata Variable', Georgia, serif;
+  font-size: 3.4em;
+  font-weight: 600;
+  line-height: 0.8;
+  color: var(--reader-accent);
+}
+.reader-body.has-indent p[data-p="0"], .reader-body.has-indent div[data-p="0"] { text-indent: 0; }
+
+/* Thanh nút nổi */
+.reader-pill {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -4px rgba(0, 0, 0, 0.15);
+}
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.pill-btn:hover:not(:disabled) { background: var(--bg-secondary); }
+.pill-btn:disabled { opacity: 0.4; cursor: default; }
+.pill-text { font-size: 0.875rem; font-weight: 500; white-space: nowrap; padding: 0 12px; }
+.pill-count { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.pill-count svg { color: var(--text-primary); }
+.pill-aa { font-family: 'Literata Variable', Georgia, serif; font-size: 1.125rem; }
+.pill-primary { background: var(--reader-accent); color: var(--reader-accent-fg); }
+.pill-primary:hover:not(:disabled) { background: var(--reader-accent); filter: brightness(1.08); }
+.pill-sep { width: 1px; height: 24px; background: var(--border-color); }
+
+@media (max-width: 640px) {
+  .reader-content-box { --page-pad: 0px; padding-top: calc(var(--reader-header-height, 44px) + var(--safe-top)); }
+  .reader-card { border: 0; border-radius: 0; padding: 2rem 1.25rem; max-width: none; }
+  .reader-card .chapter-head-title { font-size: 1.75em; }
+  .chapter-head { margin-bottom: 2rem; }
+  .pill-label { display: none; }
+  .pill-text { padding: 0 10px; }
+}
+@media (min-width: 641px) and (max-width: 1024px) {
+  .reader-content-box { --page-pad: 1.5rem; }
+  .reader-card { padding: 3rem; }
+}
+
+/* Cài đặt: tấm trượt từ dưới lên trên điện thoại */
+@media (max-width: 640px) {
+  .drawer.drawer-settings {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    padding-bottom: var(--safe-bottom);
+  }
+  .drawer-overlay.open .drawer.drawer-settings { transform: translateY(0); }
+  .drawer-settings::before {
+    content: '';
+    display: block;
+    flex-shrink: 0;
+    width: 40px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: var(--border-color);
+  }
+}

@@ -14,6 +14,14 @@ import RealmPath from './RealmPath';
 import { fetchCultivation, runBackfill, setCultivationEnabled, submitReading, flushReportQueue, hasQueuedReports, clearReportQueue } from './cultivation';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
+// "Chương 12: Tên chương" -> { n: 12, title: 'Tên chương' }; tên không theo mẫu thì dùng số thứ tự và giữ nguyên tên
+function splitChapterTitle(raw, fallbackIndex) {
+  const t = String(raw || '').trim();
+  const m = t.match(/^(?:chương|chuong|chapter)\s*(\d+)\s*[:：.\-–—]?\s*(.*)$/i);
+  if (m && m[2]) return { n: m[1], title: m[2] };
+  return { n: m ? m[1] : fallbackIndex, title: t };
+}
+
 export default function App() {
   // Cloud Auth State
   // Phiên đăng nhập nằm trong cookie HttpOnly do máy chủ đặt: JavaScript không đọc được token,
@@ -70,16 +78,25 @@ export default function App() {
         if (parsed.lineHeight === undefined) parsed.lineHeight = 1.8;
         if (parsed.allowSelect === undefined) parsed.allowSelect = false;
         if (parsed.indent === undefined) parsed.indent = true;
+        // Giao diện đọc mới (một lần): Literata 20px, giãn dòng 1,8, thẻ rộng 760px
+        if (parsed.uiv !== 2) {
+          parsed.uiv = 2;
+          parsed.font = 'font-literata';
+          parsed.fontSize = 20;
+          parsed.lineHeight = 1.8;
+          parsed.maxWidth = 760;
+        }
         return parsed;
       } catch (e) {}
     }
     return {
+      uiv: 2,
       theme: 'sepia',
-      font: 'font-athelas',
-      fontSize: 19,
+      font: 'font-literata',
+      fontSize: 20,
       lineHeight: 1.8,
       letterSpacing: 0,
-      maxWidth: 820,
+      maxWidth: 760,
       justify: true,
       indent: true,
       allowSelect: false
@@ -1166,7 +1183,7 @@ export default function App() {
       const tryRestore = () => {
         const el = document.querySelector(`.reader-body [data-p="${target}"]`);
         if (el) {
-          flashParagraph(target, { scroll: true, keepMs: 6000 });
+          flashParagraph(target, { scroll: target > 0, keepMs: 6000 });
           setActiveParaIndex(target);
         } else if (attempts < 6) {
           // Images/fonts can still be settling; retry briefly
@@ -1772,53 +1789,54 @@ export default function App() {
           )}
 
           <main className="reader-content-box">
-            <div className="xh-title-row" aria-hidden="true">
-              <span className="xh-rule" />
-              <XhIcon name="sword" />
-              <span className="xh-rule right" />
-            </div>
-            <h1 className="chapter-header-title">{currentChapter.title}</h1>
-            <div
-              className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.indent !== false ? 'has-indent' : ''} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
-              onClick={handleReaderTap}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerCancel}
-              onContextMenu={handleContextMenu}
-              dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
-            />
-
-            <div className="nav-bottom-bar">
-              <button
-                className="btn btn-secondary"
-                disabled={!currentChapter.prev_index}
-                onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.prev_index)}
-              >
-                <ArrowLeft size={16} /> Chương trước
-              </button>
-
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Chương {chapterIndex} / {currentChapter.total_chapters}
-              </span>
-
-              <button
-                className="btn btn-primary"
-                disabled={!currentChapter.next_index}
-                onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.next_index)}
-              >
-                Chương tiếp theo <ArrowRight size={16} />
-              </button>
-            </div>
+            <article className="reader-card">
+              {(() => {
+                const ch = splitChapterTitle(currentChapter.title, chapterIndex);
+                return (
+                  <div className="chapter-head">
+                    <div className="chapter-eyebrow">CHƯƠNG {ch.n}</div>
+                    <h1 className="chapter-head-title">{ch.title}</h1>
+                    <div className="chapter-divider" aria-hidden="true"><span /><i /><span /></div>
+                    <div className="chapter-meta">{currentBook.record ? currentBook.record.title : currentBook.title}</div>
+                  </div>
+                );
+              })()}
+              <div
+                className={`reader-body ${settings.font} ${settings.justify ? 'text-justify' : 'text-left'} ${settings.indent !== false ? 'has-indent' : ''} ${settings.allowSelect ? 'allow-select' : 'no-select'}`}
+                onClick={handleReaderTap}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
+                onContextMenu={handleContextMenu}
+                dangerouslySetInnerHTML={{ __html: currentChapter.content_html }}
+              />
+            </article>
           </main>
 
-          <footer className="reader-footer">
-            <span>
-              <XhIcon name="swordqi" style={{ marginRight: 6 }} />
-              {currentChapter.title}
-            </span>
-            <span>{Math.round(scrollProgress)}%</span>
-          </footer>
+          <nav className="reader-pill" aria-label="Điều hướng chương">
+            <button
+              className="pill-btn pill-text"
+              aria-label="Chương trước"
+              disabled={!currentChapter.prev_index}
+              onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.prev_index)}
+            >
+              <ChevronLeft size={16} /><span className="pill-label" aria-hidden="true">Chương trước</span>
+            </button>
+            <span className="pill-sep" aria-hidden="true" />
+            <button className="pill-btn pill-count" onClick={() => setShowTOC(true)}>
+              <List size={18} />{chapterIndex} / {currentChapter.total_chapters}
+            </button>
+            <button className="pill-btn pill-aa" aria-label="Cài đặt đọc" onClick={() => setShowSettings(true)}>Aa</button>
+            <button
+              className="pill-btn pill-text pill-primary"
+              aria-label="Chương sau"
+              disabled={!currentChapter.next_index}
+              onClick={() => loadChapter(currentBook.record ? currentBook.record.id : currentBook.id, currentChapter.next_index)}
+            >
+              <span className="pill-label" aria-hidden="true">Chương sau</span><ChevronRight size={16} />
+            </button>
+          </nav>
 
           {/* TABLE OF CONTENTS DRAWER */}
           <div className={`drawer-overlay ${showTOC ? 'open' : ''}`} onClick={() => setShowTOC(false)}>
@@ -1860,7 +1878,7 @@ export default function App() {
 
           {/* SETTINGS DRAWER */}
           <div className={`drawer-overlay ${showSettings ? 'open' : ''}`} onClick={() => setShowSettings(false)}>
-            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer drawer-settings" onClick={(e) => e.stopPropagation()}>
               <div className="drawer-header">
                 <h3>Tùy Chỉnh Giao Diện</h3>
                 <button className="btn btn-icon" onClick={() => setShowSettings(false)}>
@@ -2075,7 +2093,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ theme: settings.theme, font: 'font-athelas', fontSize: 19, lineHeight: 1.8, letterSpacing: 0, maxWidth: 820, justify: true, indent: true, allowSelect: false })}
+                  onClick={() => setSettings({ uiv: 2, theme: settings.theme, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false })}
                 >
                   Khôi Phục Mặc Định
                 </button>
