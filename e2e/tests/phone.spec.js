@@ -26,7 +26,7 @@ async function open(page, baseURL, title, size) {
 
 const PHONE = { width: 360, height: 640 };
 
-test('Điện thoại: chữ căn trái (không giãn khe), lề gọn, tiêu đề vừa phải, đoạn đầu lên sớm, đoạn 0 không bị bôi sáng', async ({ page, baseURL }) => {
+test('Điện thoại: lề gọn, tiêu đề vừa phải, đoạn đầu lên sớm, đoạn 0 không bị bôi sáng', async ({ page, baseURL }) => {
   const problems = collectProblems(page);
   await open(page, baseURL, 'Sach Dien Thoai', PHONE);
 
@@ -42,7 +42,6 @@ test('Điện thoại: chữ căn trái (không giãn khe), lề gọn, tiêu đ
       p0Class: p0.className,
     };
   });
-  expect(m.align).toBe('left');
   expect(m.padL).toBeLessThanOrEqual(16);
   expect(m.h1).toBeLessThanOrEqual(30);
   expect(m.firstTop).toBeLessThanOrEqual(330);
@@ -115,4 +114,49 @@ test('Đoạn được bôi sáng/ghim: vạch màu nằm trong lề, không dí
   m = await measure();
   expect(m.gap).toBeGreaterThanOrEqual(12);
   expect(m.left).toBeGreaterThanOrEqual(m.cardLeft - 1);
+});
+
+const gaps = (page) => page.evaluate(() => {
+  const widths = [];
+  for (const p of document.querySelectorAll('.reader-body [data-p]')) {
+    const node = p.firstChild;
+    if (!node || node.nodeType !== 3) continue;
+    const t = node.textContent;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== ' ') continue;
+      const r = document.createRange();
+      r.setStart(node, i);
+      r.setEnd(node, i + 1);
+      const rects = r.getClientRects();
+      if (rects.length === 1 && rects[0].width > 0.5) widths.push(rects[0].width);
+    }
+  }
+  widths.sort((a, b) => a - b);
+  return { n: widths.length, p50: widths[Math.floor(widths.length * 0.5)], p90: widths[Math.floor(widths.length * 0.9)], max: widths[widths.length - 1] };
+});
+
+test('Điện thoại: nút Căn đều/Căn trái hoạt động; mặc định căn đều, chữ 18px, khe giữa các từ không hở quá', async ({ page, baseURL }) => {
+  await open(page, baseURL, 'Sach Can Deu Dien Thoai', PHONE);
+  const read = () => page.evaluate(() => {
+    const p = document.querySelector('.reader-body [data-p="1"]');
+    const c = getComputedStyle(p);
+    return { align: c.textAlign, fs: parseFloat(c.fontSize), lh: parseFloat(c.lineHeight) };
+  });
+  let r = await read();
+  expect(r.align).toBe('justify');
+  expect(r.fs).toBe(18);
+  expect(r.lh).toBeCloseTo(32.4, 1);
+
+  const g = await gaps(page);
+  expect(g.n).toBeGreaterThan(50);
+  expect(g.p90).toBeLessThanOrEqual(12); // 90% khe không quá ~2,5 lần khe thường (≈4,5px)
+
+  await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: 'Cài đặt đọc', exact: true }).click();
+  const sheet = page.locator('.drawer-overlay.open .drawer');
+  await sheet.getByRole('button', { name: 'Căn Trái', exact: true }).click();
+  await page.waitForTimeout(300);
+  expect((await read()).align).toBe('left');
+  await sheet.getByRole('button', { name: 'Căn Đều 2 Bên', exact: true }).click();
+  await page.waitForTimeout(300);
+  expect((await read()).align).toBe('justify');
 });

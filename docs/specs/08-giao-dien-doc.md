@@ -22,7 +22,7 @@ Tham khảo bố cục của một trang đọc truyện khác (chỉ lấy các
 - Giãn dòng theo đúng trang mẫu (đo trực tiếp): họ ngăn đoạn bằng một dòng trống nên khoảng cách giữa các đoạn bằng đúng giá trị giãn dòng; thanh trượt của họ 1,5-2,2, bước 0,1, mặc định 1,8. Ở đây thanh trượt cũng 1,5-2,2 và đặt khoảng cách giữa các đoạn = giá trị x cỡ chữ (1,8 x 20px = 36px, một dòng trống), còn dòng trong một đoạn giữ cố định 1,8. Giá trị đã lưu ngoài khoảng được kẹp vào 1,5-2,2.
 
 ## Tối ưu điện thoại (<= 640px)
-- Chữ luôn căn trái (căn đều trên cột hẹp làm khe trắng to); máy tính bảng và máy tính vẫn theo cài đặt căn đều.
+- Nút Căn đều / Căn trái trong Cài đặt hoạt động như ở màn lớn (mặc định căn đều, đã bỏ bản ép căn trái). Để căn đều không bị hở, chữ truyện trên điện thoại nhỏ hơn cài đặt 10% (20px thành 18px, giãn dòng theo tỉ lệ); A-/A+ vẫn chỉnh được. Đo ở 360px: khe giữa các từ trung vị 8,6px, 90% khe không quá 10px (khe thường ~4,3px). Thụt đầu dòng giữ theo tùy chọn của người dùng.
 - Lề thẻ 1rem, tiêu đề chương 1,45em, các khoảng trống đầu chương nhỏ lại để đoạn đầu lên sớm (đo ở 360x640).
 - Thanh nút nổi ẩn cùng thanh đầu khi cuộn xuống; hiện lại khi cuộn ngược 150px hoặc còn dưới 300px là hết chương (để luôn bấm được Chương sau).
 - Menu ⋯ bám mép màn hình, mỗi mục một dòng, bỏ "Phím tắt".

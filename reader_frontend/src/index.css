@@ -2739,9 +2739,9 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
    TỐI ƯU ĐIỆN THOẠI (<= 640px)
    ============================================================================= */
 @media (max-width: 640px) {
-  /* Cột chữ hẹp: căn đều hai bên làm khe trắng to, nên luôn căn trái như trang mẫu */
-  .reader-body.text-justify p,
-  .reader-body.text-justify div { text-align: left !important; }
+  /* Chữ truyện nhỏ hơn 10% so với cài đặt (20px -> 18px) để mỗi dòng chứa nhiều từ hơn, căn đều 2 bên ít hở khe.
+     A-/A+ vẫn chỉnh được; nút Căn đều/Căn trái hoạt động như ở màn lớn */
+  .reader-content-box { font-size: calc(var(--reader-font-size) * 0.9); }
   .reader-card { padding: 1.5rem 1rem 2rem; }
   .reader-card .chapter-head-title { font-size: 1.45em; line-height: 1.25; }
   .chapter-head { margin-bottom: 1.5rem; }

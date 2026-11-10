@@ -91,8 +91,9 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
       const c = getComputedStyle(p);
       return { fs: c.fontSize, lh: c.lineHeight };
     });
-    expect(px(t.fs)).toBe(20);
-    expect(px(t.lh)).toBe(36);
+    const fs = name === 'phone' ? 18 : 20; // điện thoại nhỏ hơn 10% để căn đều ít hở khe
+    expect(px(t.fs)).toBe(fs);
+    expect(px(t.lh)).toBeCloseTo(fs * 1.8, 1);
 
     // Thanh nổi: Chương trước | n / tổng | Aa | Chương sau
     const nav = page.getByRole('navigation', { name: 'Điều hướng chương' });
