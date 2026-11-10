@@ -142,3 +142,67 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
     expect(problems).toEqual([]);
   });
 }
+
+test('Giãn dòng: chỉnh khoảng cách giữa các đoạn, dòng trong một đoạn giữ nguyên', async ({ page, baseURL }) => {
+  await page.setViewportSize(VIEWPORTS.desktop);
+  await openBook(page, baseURL, 'Sach Gian Dong');
+  const measure = () => page.evaluate(() => {
+    const a = document.querySelector('.reader-body [data-p="1"]');
+    const b = document.querySelector('.reader-body [data-p="2"]');
+    return {
+      gap: b.getBoundingClientRect().top - a.getBoundingClientRect().bottom,
+      lh: parseFloat(getComputedStyle(a).lineHeight),
+    };
+  });
+  const before = await measure();
+  expect(before.lh).toBe(36);
+
+  await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: 'Cài đặt đọc', exact: true }).click();
+  const range = page.locator('.drawer-overlay.open input[type="range"][min="1.2"]');
+  await range.evaluate((el) => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(el, '2.4');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(400);
+  const after = await measure();
+  expect(after.lh).toBe(36); // dòng trong đoạn không đổi
+  expect(after.gap).toBeGreaterThan(before.gap + 10); // khoảng cách giữa các đoạn rộng ra
+});
+
+test('Thanh tiến độ không để lại vệt ở mép trên khi thanh đầu đã ẩn', async ({ page, baseURL }) => {
+  await page.setViewportSize(VIEWPORTS.desktop);
+  await openBook(page, baseURL, 'Sach Vet Tien Do');
+  await page.waitForTimeout(2800);
+  await page.evaluate(() => window.scrollTo(0, 400));
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.scrollTo(0, 900));
+  await expect(page.locator('.reader-header')).toHaveClass(/hidden/);
+  await page.waitForTimeout(500);
+  const bar = await page.locator('.header-progress').boundingBox();
+  expect(bar.y + bar.height).toBeLessThanOrEqual(0.5); // nằm hẳn ngoài màn hình
+});
+
+test('Thanh tiến độ chạy theo cuộn và tự cập nhật khi chiều cao trang đổi (không cần cuộn)', async ({ page, baseURL }) => {
+  await page.setViewportSize(VIEWPORTS.desktop);
+  await openBook(page, baseURL, 'Sach Tien Do Chay');
+  await page.waitForTimeout(2800);
+  const scale = () => page.locator('.header-progress').evaluate((e) => {
+    const m = new DOMMatrixReadOnly(getComputedStyle(e).transform);
+    return m.a;
+  });
+  await page.evaluate(() => window.scrollTo(0, 800));
+  await expect.poll(scale).toBeGreaterThan(0.05);
+  const s1 = await scale();
+  await page.evaluate(() => window.scrollTo(0, 1600));
+  await expect.poll(scale).toBeGreaterThan(s1 + 0.05);
+  // Trang dài thêm (ví dụ phông chữ/hình tải xong): tiến độ phải co lại theo mà không cần cuộn
+  const s2 = await scale();
+  await page.evaluate(() => {
+    const d = document.createElement('div');
+    d.style.height = '6000px';
+    document.querySelector('.reader-card').appendChild(d);
+  });
+  await expect.poll(scale).toBeLessThan(s2 - 0.1);
+});

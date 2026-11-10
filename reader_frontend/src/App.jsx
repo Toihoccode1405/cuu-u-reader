@@ -201,7 +201,9 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', resolveTheme(settings.theme));
     document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
-    document.documentElement.style.setProperty('--reader-line-height', settings.lineHeight);
+    // Dòng trong một đoạn giữ nguyên 1,8; thanh "Giãn dòng" chỉnh khoảng cách giữa các đoạn
+    document.documentElement.style.setProperty('--reader-line-height', 1.8);
+    document.documentElement.style.setProperty('--reader-para-gap', `${Math.max(0, settings.lineHeight - 1.05).toFixed(2)}em`);
     document.documentElement.style.setProperty('--reader-letter-spacing', `${settings.letterSpacing}px`);
     document.documentElement.style.setProperty('--reader-max-width', `${settings.maxWidth}px`);
     localStorage.setItem('cuu_u_reader_settings', JSON.stringify(settings));
@@ -1230,6 +1232,36 @@ export default function App() {
     };
   }, [showMoreMenu, headerVisible]);
 
+  // Thanh tiến độ ở đáy header: cập nhật trực tiếp vào DOM khi cuộn, khi trang đổi kích thước
+  // (phông/hình tải xong, đổi cỡ chữ) và khi sang chương, nên không bao giờ "đứng yên" ở giá trị cũ
+  const progressRef = useRef(null);
+  useEffect(() => {
+    if (view !== 'reader') return;
+    let raf = 0;
+    const paint = () => {
+      raf = 0;
+      const el = progressRef.current;
+      if (!el) return;
+      const st = window.scrollY || document.documentElement.scrollTop;
+      const sh = document.documentElement.scrollHeight - window.innerHeight;
+      const ratio = sh > 0 ? Math.min(1, Math.max(0, st / sh)) : 0;
+      el.style.transform = `scaleX(${ratio})`;
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
+    paint();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    if (ro) ro.observe(document.documentElement);
+    if (ro) ro.observe(document.body);
+    return () => {
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      if (ro) ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [view, readingChapter]);
+
   // Debounced scroll listener for reading position sync
   useEffect(() => {
     if (view !== 'reader' || !currentBook || !currentChapter) return;
@@ -1786,7 +1818,7 @@ export default function App() {
                 );
               })()}
             </div>
-            <div className="header-progress" style={{ transform: `scaleX(${Math.min(1, Math.max(0, scrollProgress / 100))})` }} />
+            <div className="header-progress" ref={progressRef} />
           </header>
           {!headerVisible && (
             <button
@@ -1999,7 +2031,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <label className="settings-label">Giãn Dòng: {settings.lineHeight.toFixed(2)}</label>
+                <label className="settings-label">Giãn Dòng (giữa các đoạn): {settings.lineHeight.toFixed(2)}</label>
                 <div className="setting-range-row">
                   <button
                     className="size-btn"

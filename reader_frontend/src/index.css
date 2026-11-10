@@ -2723,3 +2723,14 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
 .swatch-auto { background: linear-gradient(90deg, #161618 50%, #ffffff 50%); }
 .theme-swatch-btn.active .swatch { border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color); }
 .theme-swatch-btn.active .swatch-name { color: var(--text-primary); font-weight: 600; }
+
+/* Khoảng cách giữa các đoạn theo thanh "Giãn dòng"; dòng trong đoạn giữ nguyên */
+.reader-card .reader-body p,
+.reader-card .reader-body div[data-p] {
+  margin: 0 0 var(--reader-para-gap, 0.75em) 0;
+}
+/* Thanh tiến độ nằm hẳn trong thanh đầu, ẩn cùng thanh đầu (không để lại vệt 1px ở mép trên) */
+.header-progress { bottom: 0; }
+.reader-header.hidden .header-progress { opacity: 0; }
+
+.header-progress { transform: scaleX(0); }
