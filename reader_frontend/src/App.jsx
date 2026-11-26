@@ -118,6 +118,8 @@ export default function App() {
       allowSelect: false
     };
   });
+  // Ảnh nền Vương Lâm phủ kín màn đọc: bật sẵn, người dùng tắt thì nhớ lựa chọn
+  const ambienceOn = settings.ambience !== false;
 
   const prepAbortRef = useRef(null);
   const [prepProgress, setPrepProgress] = useState(null);
@@ -1802,7 +1804,8 @@ export default function App() {
           VIEW 3: READER VIEW
           ----------------------------------------------------------------------- */}
       {view === 'reader' && currentBook && currentChapter && (
-        <div className="reader-wrapper">
+        <div className={`reader-wrapper ${ambienceOn ? 'has-ambience' : ''}`}>
+          {ambienceOn && <div className="reader-bg" data-testid="reader-bg" aria-hidden="true" />}
           <header className={`reader-header ${headerVisible ? '' : 'hidden'}`}>
             <div className="reader-header-inner">
               <button
@@ -2047,6 +2050,15 @@ export default function App() {
                   {' '}Hệ thống tu tiên
                 </label>
 
+                <label className="settings-label cultivation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={ambienceOn}
+                    onChange={(e) => setSettings(s => ({ ...s, ambience: e.target.checked }))}
+                  />
+                  {' '}Ảnh nền Vương Lâm
+                </label>
+
                 <label className="settings-label">Cỡ Chữ: {settings.fontSize}px</label>
                 <div className="setting-range-row">
                   <button
@@ -2201,7 +2213,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ uiv: 2, theme: settings.theme, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false })}
+                  onClick={() => setSettings({ uiv: 2, theme: settings.theme, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false, ...(settings.ambience === undefined ? {} : { ambience: settings.ambience }) })}
                 >
                   Khôi Phục Mặc Định
                 </button>

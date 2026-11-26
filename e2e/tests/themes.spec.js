@@ -13,9 +13,8 @@ async function epub(title) {
 }
 
 async function open(page, baseURL, title, savedTheme) {
-  if (savedTheme) {
-    await page.addInitScript((t) => localStorage.setItem('cuu_u_reader_settings', JSON.stringify({ uiv: 2, theme: t, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false })), savedTheme);
-  }
+  // Bảng màu theme được đo với ảnh nền tắt (ảnh nền làm thẻ chữ hơi trong, kiểm riêng ở ambience.spec.js)
+  await page.addInitScript((t) => localStorage.setItem('cuu_u_reader_settings', JSON.stringify({ uiv: 2, theme: t || 'auto', font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false, ambience: false })), savedTheme);
   await page.request.post('/api/auth/register', { headers: { Origin: baseURL }, data: { username: uniqueName(), password: PASSWORD } });
   await page.request.post('/api/books/upload', { headers: { Origin: baseURL }, multipart: { file: { name: 't.epub', mimeType: 'application/epub+zip', buffer: await epub(title) } } });
   await page.goto('/');

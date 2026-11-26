@@ -2902,3 +2902,41 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
   .cultivation-chip { max-width: 138px; }
 }
 
+/* =============================================================================
+   ẢNH NỀN KHI ĐỌC: ảnh Vương Lâm phủ kín khung nhìn, nằm sau thẻ chữ. Chữ luôn nằm trên thẻ gần đặc.
+   Hai ảnh riêng (máy tính ngang, điện thoại dọc); trình duyệt chỉ tải ảnh khớp với màn hình hiện tại.
+   Lớp nền là một phần tử fixed (không dùng background-attachment: fixed) nên cuộn không giật.
+   ============================================================================= */
+.reader-wrapper.has-ambience { isolation: isolate; }
+.reader-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url('./assets/vuong-lam-desktop.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translateZ(0);
+}
+/* Lớp phủ theo theme để ảnh không chói và không lấn chữ ngoài thẻ */
+.reader-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.5);
+}
+html[data-theme="sepia"] .reader-bg::after { background: rgba(243, 233, 210, 0.52); }
+html[data-theme="slate"] .reader-bg::after { background: rgba(8, 8, 10, 0.5); }
+@media (max-width: 640px) {
+  .reader-bg { background-image: url('./assets/vuong-lam-phone.webp'); background-position: center top; }
+  .reader-bg::after { background: rgba(255, 255, 255, 0.45); }
+  html[data-theme="sepia"] .reader-bg::after { background: rgba(243, 233, 210, 0.48); }
+  html[data-theme="slate"] .reader-bg::after { background: rgba(8, 8, 10, 0.3); }
+  /* Điện thoại: thẻ chữ chiếm cả bề ngang nên phải trong hơn một chút thì mới thấy ảnh (chữ vẫn tương phản >= 7:1 kể cả khi ảnh sáng nhất sau lớp phủ) */
+  .reader-wrapper.has-ambience .reader-card { background: color-mix(in srgb, var(--bg-surface) 72%, transparent); }
+}
+/* Thẻ chữ mờ mờ (72% đục) để thấy ảnh phía sau; lớp phủ theo theme giữ chữ tương phản >= 7:1 */
+.reader-wrapper.has-ambience .reader-card {
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+}
