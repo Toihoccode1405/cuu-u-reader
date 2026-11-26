@@ -12,6 +12,7 @@ import { getApiUrl } from './api';
 import { prepareChapters } from './chapterPrep';
 import RealmIcon from './RealmIcon';
 import RealmPath from './RealmPath';
+import { AmbienceFigure, AmbienceBanner, PixelFight, useAmbienceOn } from './ReaderAmbience';
 import { fetchCultivation, runBackfill, setCultivationEnabled, submitReading, flushReportQueue, hasQueuedReports, clearReportQueue } from './cultivation';
 import { parseEpubClient, saveBookToDB, getBookFromDB, loadChapterFromEpubBlob } from './storage';
 
@@ -118,6 +119,7 @@ export default function App() {
       allowSelect: false
     };
   });
+  const ambienceOn = useAmbienceOn(settings.ambience);
 
   const prepAbortRef = useRef(null);
   const [prepProgress, setPrepProgress] = useState(null);
@@ -1803,6 +1805,7 @@ export default function App() {
           ----------------------------------------------------------------------- */}
       {view === 'reader' && currentBook && currentChapter && (
         <div className="reader-wrapper">
+          {ambienceOn && <><AmbienceFigure /><PixelFight /></>}
           <header className={`reader-header ${headerVisible ? '' : 'hidden'}`}>
             <div className="reader-header-inner">
               <button
@@ -1896,6 +1899,7 @@ export default function App() {
 
           <main className="reader-content-box">
             <article className="reader-card">
+              {ambienceOn && <AmbienceBanner />}
               {(() => {
                 const ch = splitChapterTitle(currentChapter.title, chapterIndex);
                 return (
@@ -2045,6 +2049,15 @@ export default function App() {
                     onChange={(e) => handleToggleCultivation(e.target.checked)}
                   />
                   {' '}Hệ thống tu tiên
+                </label>
+
+                <label className="settings-label cultivation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={ambienceOn}
+                    onChange={(e) => setSettings(s => ({ ...s, ambience: e.target.checked }))}
+                  />
+                  {' '}Hiệu ứng nền và chiến đấu
                 </label>
 
                 <label className="settings-label">Cỡ Chữ: {settings.fontSize}px</label>
@@ -2201,7 +2214,7 @@ export default function App() {
 
                 <button
                   className="settings-reset-btn"
-                  onClick={() => setSettings({ uiv: 2, theme: settings.theme, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false })}
+                  onClick={() => setSettings({ uiv: 2, theme: settings.theme, font: 'font-literata', fontSize: 20, lineHeight: 1.8, letterSpacing: 0, maxWidth: 760, justify: true, indent: true, allowSelect: false, ...(settings.ambience === undefined ? {} : { ambience: settings.ambience }) })}
                 >
                   Khôi Phục Mặc Định
                 </button>
