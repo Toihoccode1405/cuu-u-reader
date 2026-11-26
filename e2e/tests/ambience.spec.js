@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { collectProblems, uniqueName, PASSWORD } from './helpers.js';
 
 const P = 'Vương Lâm ngồi bên con lộ nhỏ dẫn vào thôn, vẻ mặt ngơ ngác nhìn lên bầu trời xanh thắm. Thuở nhỏ thân thể hắn vốn gầy gò ốm yếu, cha hắn sợ khó nuôi được nên theo tập tục mà đặt tên cúng cơm cho hắn là Thiết Trụ.';
-const LABEL = 'Ảnh nền Vương Lâm';
+const LABEL = 'Ảnh nền';
 
 async function epub(title) {
   const z = new JSZip();
@@ -170,7 +170,7 @@ test('Công tắc "Ảnh nền Vương Lâm": bật sẵn; tắt thì mất ản
   await open(page, baseURL, 'Sach Cong Tat Nen', { width: 1440, height: 900 });
   await expect(bg(page)).toBeVisible();
   await page.getByTitle(/Cài đặt giao diện/).click();
-  const toggle = page.getByLabel(LABEL);
+  const toggle = page.getByLabel(LABEL, { exact: true });
   await expect(toggle).toBeChecked();
   await toggle.uncheck();
   await page.keyboard.press('Escape');
@@ -189,5 +189,5 @@ test('Tắt từ trước thì không có lớp nền và không tải ảnh', a
 test('Điện thoại: công tắc có trong cài đặt đọc và đang bật', async ({ page, baseURL }) => {
   await open(page, baseURL, 'Sach Cong Tat Dien Thoai', { width: 375, height: 700 });
   await page.getByRole('navigation', { name: 'Điều hướng chương' }).getByRole('button', { name: 'Cài đặt đọc', exact: true }).click();
-  await expect(page.getByLabel(LABEL)).toBeChecked();
+  await expect(page.getByLabel(LABEL, { exact: true })).toBeChecked();
 });

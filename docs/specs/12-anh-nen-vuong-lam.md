@@ -9,9 +9,9 @@
   - máy tính: `vuong-lam-desktop.webp` 2560×1440 (~151 KB), nguồn wallhaven 7j3399.
   - điện thoại: `vuong-lam-phone.webp` 810×1440 (~97 KB), cắt dọc 9:16 quanh nhân vật từ wallhaven 3q99qd.
   Ngân sách: máy tính <= 250 KB, điện thoại <= 150 KB (có test).
-- Lớp phủ theo theme (`.reader-bg::after`) cho ảnh không chói: trắng 50%, sepia 52%, tối 50% (điện thoại 45%, 48%, 30%).
-- **Thẻ chữ mờ mờ**: nền thẻ = màu thẻ của theme 72% đục (`color-mix`). Thấy ảnh qua thẻ nhưng chữ vẫn tương phản >= 7:1 trong trường hợp xấu nhất (ảnh trắng nhất hoặc đen nhất phía sau lớp phủ). Muốn rõ chữ hơn thì tăng độ đục, muốn thấy ảnh hơn thì giảm; test chặn trong khoảng 60–85%.
-- Công tắc **"Ảnh nền Vương Lâm"** trong cài đặt đọc, lưu trong cài đặt (`ambience`, đồng bộ lên tài khoản). Bật sẵn trên mọi thiết bị. Tắt thì không có lớp nền và không tải ảnh nào. Nút "Đặt lại" giữ lựa chọn này.
+- Lớp phủ theo theme (`.reader-bg::after`: trắng, sepia hoặc đen nhạt) cho ảnh không chói. Độ đậm lấy từ thanh trượt "Độ mờ ảnh" (40–90%, mặc định 50%, lưu `ambienceDim` trong cài đặt); biến CSS `--scrim-a`.
+- **Thẻ chữ mờ mờ**: nền thẻ = màu thẻ của theme 76% đục (`color-mix`). Thấy ảnh qua thẻ nhưng chữ vẫn tương phản >= 7:1 trong trường hợp xấu nhất (ảnh trắng nhất hoặc đen nhất phía sau lớp phủ). Muốn rõ chữ hơn thì tăng độ đục, muốn thấy ảnh hơn thì giảm; test chặn trong khoảng 60–85%.
+- Công tắc **"Ảnh nền"** trong cài đặt đọc, lưu trong cài đặt (`ambience`, đồng bộ lên tài khoản). Bật sẵn trên mọi thiết bị. Tắt thì không có lớp nền và không tải ảnh nào. Nút "Đặt lại" giữ lựa chọn này.
 - Không gọi API, không timer, không script chạy nền. CSP không đổi (`img-src 'self'`); ảnh là asset cùng nguồn, Vite băm tên và Service Worker cache như asset khác.
 
 ## Xử lý ảnh
@@ -29,3 +29,13 @@ Cả hai ảnh lấy từ wallhaven.cc (đăng bởi người dùng, "nguồn kh
 5. Công tắc: bật sẵn, tắt thì mất lớp nền và lưu `ambience: false`; tắt từ trước thì không có lớp nền và không tải ảnh; có sẵn và đang bật trên điện thoại.
 
 Độ đẹp (ảnh có lộ ra đúng mức, hài hòa với từng theme) đánh giá bằng ảnh chụp màn hình.
+
+## Ảnh riêng do người dùng chọn (thêm sau)
+Trong cài đặt đọc, dưới công tắc "Ảnh nền" có mục chọn ảnh: khung xem trước, nút "Chọn ảnh từ máy", nút "Dùng lại ảnh Vương Lâm" (chỉ hiện khi đang dùng ảnh riêng) và thanh trượt "Độ mờ ảnh".
+- **Chỉ lưu trong trình duyệt của máy này** (IndexedDB, DB `cuu_u_bg`, kho `img`, khóa `desktop` hoặc `phone`, giá trị là Blob WebP). Không gửi lên server, không đồng bộ; máy khác hay xóa dữ liệu trình duyệt thì quay về ảnh Vương Lâm. Chỉ độ đậm lớp phủ (`ambienceDim`) đồng bộ như mọi cài đặt khác.
+- **Hai ô riêng**: `phone` khi rộng <= 640px, còn lại là `desktop`. Ô nào trống thì dùng ảnh mặc định của loại máy đó.
+- **Xử lý ngay trên máy**: chỉ nhận JPG, PNG, WebP (từ chối SVG vì có thể chứa script và mọi loại khác), tối đa 20 MB; thu nhỏ cạnh dài còn <= 2560px (máy tính) hoặc <= 1440px (điện thoại), nén WebP 82%. Lỗi hiện trong `role="alert"` (sai định dạng, quá lớn, ảnh hỏng, không lưu được); ảnh cũ giữ nguyên khi lỗi.
+- Ảnh hiển thị qua blob URL tạo khi vào màn đọc và thu hồi khi rời; CSP `img-src` đã có `blob:` nên không đổi. Trong lúc đọc IndexedDB lớp nền tạm không có ảnh để khỏi tải ảnh mặc định thừa.
+- **Giữ chữ đọc được với ảnh bất kỳ**: ảnh người dùng có thể rất sáng hoặc rối, nên chỉ lớp phủ chỉnh được; thẻ chữ luôn 76% đục. Thanh trượt có mức thấp nhất 40% để trường hợp xấu nhất (ảnh trắng hoặc đen hoàn toàn) vẫn đạt tương phản >= 7:1 ở cả ba theme (ở 30% theme sepia chỉ còn 6,9:1 nên đã nâng mức thấp nhất).
+
+Kiểm thử thêm: `e2e/tests/bg-custom.spec.js` (5 test: chọn ảnh ở máy tính thì thu nhỏ, nén WebP, không có request mạng nào, giữ sau khi tải lại và không tải ảnh mặc định; hai ô độc lập; "Dùng lại ảnh Vương Lâm" xóa ảnh riêng; từ chối SVG, file > 20 MB và ảnh hỏng mà ảnh cũ còn nguyên; thanh trượt 40–90 và tương phản ở mức thấp nhất). Đã kiểm đột biến: bỏ giới hạn 20 MB, bỏ thu nhỏ, gộp hai ô, cho phép SVG, hạ mức thấp nhất của thanh trượt. Bỏ trạng thái "đang đọc" (loading) không bị bắt vì trong luồng thật IndexedDB luôn đọc xong trước khi màn đọc mở.

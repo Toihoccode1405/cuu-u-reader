@@ -2919,24 +2919,35 @@ html[data-theme="slate"] { --reader-accent-fg: #1a0d08; }
   background-repeat: no-repeat;
   transform: translateZ(0);
 }
+.bg-preview.is-default { background-image: url('./assets/vuong-lam-desktop.webp'); }
 /* Lớp phủ theo theme để ảnh không chói và không lấn chữ ngoài thẻ */
 .reader-bg::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgb(255 255 255 / var(--scrim-a, 0.5));
 }
-html[data-theme="sepia"] .reader-bg::after { background: rgba(243, 233, 210, 0.52); }
-html[data-theme="slate"] .reader-bg::after { background: rgba(8, 8, 10, 0.5); }
+html[data-theme="sepia"] .reader-bg::after { background: rgb(243 233 210 / var(--scrim-a, 0.5)); }
+html[data-theme="slate"] .reader-bg::after { background: rgb(8 8 10 / var(--scrim-a, 0.5)); }
 @media (max-width: 640px) {
-  .reader-bg { background-image: url('./assets/vuong-lam-phone.webp'); background-position: center top; }
-  .reader-bg::after { background: rgba(255, 255, 255, 0.45); }
-  html[data-theme="sepia"] .reader-bg::after { background: rgba(243, 233, 210, 0.48); }
-  html[data-theme="slate"] .reader-bg::after { background: rgba(8, 8, 10, 0.3); }
+  .reader-bg, .bg-preview.is-default { background-image: url('./assets/vuong-lam-phone.webp'); background-position: center top; }
   /* Điện thoại: thẻ chữ chiếm cả bề ngang nên phải trong hơn một chút thì mới thấy ảnh (chữ vẫn tương phản >= 7:1 kể cả khi ảnh sáng nhất sau lớp phủ) */
-  .reader-wrapper.has-ambience .reader-card { background: color-mix(in srgb, var(--bg-surface) 72%, transparent); }
+  .reader-wrapper.has-ambience .reader-card { background: color-mix(in srgb, var(--bg-surface) 76%, transparent); }
 }
-/* Thẻ chữ mờ mờ (72% đục) để thấy ảnh phía sau; lớp phủ theo theme giữ chữ tương phản >= 7:1 */
+/* Thẻ chữ mờ mờ (76% đục) để thấy ảnh phía sau; lớp phủ theo theme giữ chữ tương phản >= 7:1 */
 .reader-wrapper.has-ambience .reader-card {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
 }
+
+/* Mục chọn ảnh nền trong cài đặt đọc */
+.bg-picker { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.bg-preview {
+  height: 110px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.bg-picker-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.bg-picker-error { color: #d64545; font-size: 0.875rem; }
