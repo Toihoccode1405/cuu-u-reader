@@ -122,7 +122,7 @@ export default function App() {
   });
   // Ảnh nền Vương Lâm phủ kín màn đọc: bật sẵn, người dùng tắt thì nhớ lựa chọn
   const ambienceOn = settings.ambience !== false;
-  const ambienceDim = settings.ambienceDim ?? 50; // độ đậm lớp phủ lên ảnh (30-90%)
+  const ambienceDim = settings.ambienceDim ?? 50; // độ đậm lớp phủ lên ảnh (0-90%)
   const bgImg = useBgImage(ambienceOn); // ảnh riêng của máy này (IndexedDB) hoặc ảnh Vương Lâm mặc định
 
   const prepAbortRef = useRef(null);

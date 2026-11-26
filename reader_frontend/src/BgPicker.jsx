@@ -52,7 +52,7 @@ export default function BgPicker({ dim, onDim }) {
       <input
         type="range"
         aria-label="Độ mờ ảnh"
-        min="40"
+        min="0"
         max="90"
         step="5"
         value={dim}

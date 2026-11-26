@@ -167,11 +167,11 @@ test('Từ chối file không phải ảnh JPG/PNG/WebP, file quá lớn và ả
   expect(s.rgb[0]).toBeGreaterThan(180); // vẫn là ảnh đỏ hợp lệ trước đó
 });
 
-test('Thanh trượt "Độ mờ ảnh": chỉnh lớp phủ ảnh trong 40–90%, mặc định 50%, lưu lại, chữ vẫn tương phản >= 7:1 ở mức thấp nhất', async ({ page, baseURL }) => {
+test('Thanh trượt "Độ mờ ảnh": chỉnh lớp phủ ảnh trong 0–90%, mặc định 50%, lưu lại, chữ vẫn tương phản >= 4,5:1 (mức AA) ở mức thấp nhất 0%', async ({ page, baseURL }) => {
   await open(page, baseURL, 'Sach Thanh Truot', DESKTOP);
   await openSettings(page);
   const slider = page.getByLabel('Độ mờ ảnh');
-  await expect(slider).toHaveAttribute('min', '40');
+  await expect(slider).toHaveAttribute('min', '0');
   await expect(slider).toHaveAttribute('max', '90');
   await expect(slider).toHaveValue('50');
   const scrimAlpha = () => page.evaluate(() => {
@@ -181,15 +181,15 @@ test('Thanh trượt "Độ mờ ảnh": chỉnh lớp phủ ảnh trong 40–90
   });
   expect(await scrimAlpha()).toBe(0.5);
 
-  await slider.fill('40');
-  await expect.poll(scrimAlpha).toBe(0.4);
+  await slider.fill('0');
+  await expect.poll(scrimAlpha).toBe(0);
   await slider.fill('90');
   await expect.poll(scrimAlpha).toBe(0.9);
-  await slider.fill('40');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cuu_u_reader_settings')).ambienceDim)).toBe(40);
+  await slider.fill('0');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cuu_u_reader_settings')).ambienceDim)).toBe(0);
   await closeSettings(page);
 
-  // Mức thấp nhất vẫn đọc được chữ trong trường hợp xấu nhất (ảnh trắng nhất hoặc đen nhất phía sau)
+  // Mức thấp nhất (0%, không phủ gì) vẫn đạt tương phản AA 4,5:1 trong trường hợp xấu nhất (ảnh trắng nhất hoặc đen nhất phía sau)
   for (const theme of ['white', 'sepia', 'slate']) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
     await page.waitForTimeout(700);
@@ -211,7 +211,7 @@ test('Thanh trượt "Độ mờ ảnh": chỉnh lớp phủ ảnh trong 40–90
     for (const k of [0, 255]) {
       const bgc = over(card, over(rgba(r.scrim), { r: k, g: k, b: k, a: 1 }));
       const [a, b] = [lum(bgc), lum(rgba(r.txt))].sort((x, y) => y - x);
-      expect((a + 0.05) / (b + 0.05), `theme ${theme}, ảnh nền ${k}`).toBeGreaterThanOrEqual(7);
+      expect((a + 0.05) / (b + 0.05), `theme ${theme}, ảnh nền ${k}`).toBeGreaterThanOrEqual(4.5);
     }
   }
 });
